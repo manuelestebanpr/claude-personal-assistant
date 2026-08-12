@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Claude Personal Assistant</title>
+    <link rel="stylesheet" th:href="@{/css/chat.css}"/>
+</head>
+<body>
+<div class="layout">
+    <aside class="sidebar">
+        <form th:action="@{/chats}" method="post">
+            <button type="submit" class="new-chat">+ New chat</button>
+        </form>
+        <ul class="conversation-list">
+            <li th:each="conversation : ${conversations}"
+                th:classappend="${currentChat != null && currentChat.id() == conversation.id()} ? 'active'">
+                <a class="conversation-link"
+                   th:href="@{/chats/{id}(id=${conversation.id()})}"
+                   th:text="${conversation.title()}">Conversation title</a>
+                <form class="delete-form" th:action="@{/chats/{id}/delete(id=${conversation.id()})}" method="post">
+                    <button type="submit" class="delete-button" title="Delete chat">&times;</button>
+                </form>
+            </li>
+        </ul>
+    </aside>
+
+    <main class="chat-pane" th:attr="data-chat-id=${currentChat != null} ? ${currentChat.id()} : ''">
+        <div id="messages" class="messages">
+            <p th:if="${currentChat == null}" class="placeholder">Select or create a chat to begin.</p>
+            <th:block th:if="${currentChat != null}">
+                <div th:each="message : ${messages}"
+                     class="bubble"
+                     th:classappend="${message.role().name() == 'USER'} ? 'user' : 'assistant'"
+                     th:text="${message.content()}">Message content</div>
+            </th:block>
+        </div>
+        <form id="composer" class="composer" th:if="${currentChat != null}">
+            <textarea id="message-input" class="message-input" rows="2"
+                      placeholder="Send a message&hellip;" autofocus></textarea>
+            <button id="send-button" class="send-button" type="submit">Send</button>
+        </form>
+    </main>
+</div>
+<script th:src="@{/js/chat.js}"></script>
+</body>
+</html>

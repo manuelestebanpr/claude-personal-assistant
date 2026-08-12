@@ -1,0 +1,23 @@
+# Run with: podman compose up --build   (docker compose works identically)
+# ANTHROPIC_API_KEY is read from .env (compose loads it natively).
+services:
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    ports:
+      - "3000:3000"   # Grafana UI
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # Boot 4.1 maps the native OTEL_* env vars onto its management properties.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_SERVICE_NAME: claude-personal-assistant
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - lgtm
