@@ -4,38 +4,80 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-Spring Boot 4.1.0 application (Java 25) named `claude-personal-assistant`, generated from Spring Initializr. It is currently a bare skeleton: the only application code is the `@SpringBootApplication` entry point plus a Testcontainers dev-service config — no controllers, services, repositories, or domain code exist yet.
+Server-rendered, multi-conversation chat backed by Claude (Anthropic) via Spring AI. Spring Boot 4.1 / Java 25, WebMVC + Thymeleaf, token-by-token streaming over the servlet `OutputStream`, per-chat history in file-based H2, OpenTelemetry export to a Grafana LGTM stack. Single user — no auth, no user management.
 
-This directory is not a git repository (no `.git`). Git-based workflows (`git log`, branches, etc.) won't work here until one is initialized.
+`README.md` is the long-form reference (streaming protocol, error-classification matrix, observability, running instructions). This file carries what is needed to change code correctly.
 
 ## Build and test commands
 
-Use the Maven wrapper (no local Maven install required):
-- Build: `./mvnw clean install` (or `./mvnw compile`)
-- Run all tests: `./mvnw test`
-- Run a single test class: `./mvnw test -Dtest=ClaudePersonalAssistantApplicationTests`
-- Run a single test method: `./mvnw test -Dtest=ClaudePersonalAssistantApplicationTests#contextLoads`
-- Run the app: `./mvnw spring-boot:run`
-- Run the app with the Testcontainers dev service attached (auto-starts the Grafana LGTM observability stack): `./mvnw spring-boot:test-run`, which launches via `TestClaudePersonalAssistantApplication` instead of the normal main class.
+Use the Maven wrapper:
+- Build: `./mvnw clean install` (compile only: `./mvnw compile`)
+- All tests: `./mvnw test`
+- Single class: `./mvnw test -Dtest=ChatModuleIntegrationTests`
+- Single method: `./mvnw test -Dtest=ChatModuleIntegrationTests#happyPathStreamPersistsBothMessagesAndRehydratesOnReopen`
+- Run with the observability stack (Testcontainers `grafana/otel-lgtm`, needs Docker/podman): `./mvnw spring-boot:test-run` — boots via `TestClaudePersonalAssistantApplication`, not the main class
+- Run plain (no containers, OTLP export warnings are harmless): `./mvnw spring-boot:run`
+- Production-style: `podman compose up --build` (Grafana on `:3000`, app on `:8080`, H2 file in `./data`)
+
+`ANTHROPIC_API_KEY` comes from a git-ignored `.env` (see `.env.example`), imported through `spring.config.import=optional:file:.env[.properties]`. Tests use a dummy key from `src/test/resources/application.properties`.
+
+Tests that boot the full context (`ClaudePersonalAssistantApplicationTests`) require a container runtime. Slice tests (`@WebMvcTest`) and `@ApplicationModuleTest` tests do not.
 
 ## Architecture
 
-- **Package root**: `com.my.custom.claudepersonalassistant`
-- **Entry point**: `ClaudePersonalAssistantApplication` — standard `@SpringBootApplication`.
-- **Dev-mode entry point**: `TestClaudePersonalAssistantApplication` (lives under `src/test`) — boots the real application with `TestcontainersConfiguration` imported, so local dev runs get a live observability backend without a separate `docker-compose` setup.
-- **Testcontainers dev/test service**: `TestcontainersConfiguration` is a test-scope `@TestConfiguration` declaring an `LgtmStackContainer` (`grafana/otel-lgtm:latest`) as a `@ServiceConnection` — this wires OpenTelemetry export automatically for both `./mvnw test` and the dev-mode entry point above. Pin the same image tag in production as used here.
+Three Spring Modulith modules, direct subpackages of `com.my.custom.claudepersonalassistant`:
 
-### Dependency stack and what it implies for future code
+```
+audit  ──▶ chat ──▶ assistant ──▶ Spring AI / Anthropic
+                      ▲
+                      └── allowedDependencies = {}
+```
 
-Parent POM: `spring-boot-starter-parent:4.1.0`. From the declared starters in `pom.xml`:
-- `spring-boot-starter-webmvc` + `spring-boot-starter-thymeleaf` — this is a server-rendered MVC app, not a REST-only or reactive service.
-- `spring-boot-starter-data-jpa` + `h2` (runtime) + `spring-boot-h2console` — JPA persistence backed by H2, with the H2 web console available.
-- `spring-ai-starter-model-anthropic` (`spring-ai-bom:2.0.0`) — Spring AI's Claude/Anthropic chat model integration is on the classpath for AI-assisted features.
-- `spring-modulith-starter-core` + `spring-modulith-starter-jpa` (`spring-modulith-bom:2.1.0`) — the app is expected to grow as Spring Modulith modules (one package per module under the root package, with JPA-backed event publication registry), not a flat layered structure.
-- `spring-boot-starter-opentelemetry` — tracing/metrics, exported to the Testcontainers-provided Grafana LGTM stack in dev/test.
-- `lombok` — annotation processor is already wired into both the `default-compile` and `default-testCompile` executions of `maven-compiler-plugin`.
-- Test scope mirrors the main starters with `-test`/`-testcontainers` variants, plus `testcontainers-grafana` and `testcontainers-junit-jupiter`.
+- **`chat`** — conversation lifecycle, persistence, web UI, streaming endpoint. Allowed to depend only on `assistant`.
+- **`assistant`** — Spring AI / Anthropic integration. Depends on **nothing**; Spring AI types never cross `AssistantClient`.
+- **`audit`** — observability listeners consuming events from the other two.
 
-### pom.xml quirk
+Each module declares its `allowedDependencies` in `package-info.java`, and `ModularityTests` enforces it with `ApplicationModules.verify()` plus an explicit assertion that the module set is exactly `{assistant, audit, chat}` (so a stray top-level package cannot silently become a fourth module). **A boundary violation fails the build — it is not a convention.**
 
-The POM contains intentionally empty `<license>` and `<developers>` overrides to block unwanted inheritance from the parent POM — don't remove these unless the parent is also being changed.
+**Package convention**: API types (interfaces, records, events, enums) live at the module root; internals live in nested subpackages (`web`, `service`, `persistence`, `config`, `client`, `error`, `logging`). Nested packages are invisible to other modules.
+
+**Layering inside `chat`**: controller → `ChatFacade` (interface) → `ConversationService` / `MessageService` (interfaces) → Spring Data repositories. Constructor injection everywhere, records for DTOs and events, request paths and view/model names as constants on the controllers, tunables in `ChatProperties`.
+
+### The boundary translation is deliberate
+
+`assistant.HistoryMessage(HistoryRole, String)` and `chat.persistence.MessageEntity` look redundant but are the two sides of the port. `HistoryMessage` is the model contract — role plus text, nothing else. `MessageEntity` carries id, FK, timestamp, `@Lob` content. `DefaultChatFacade.toHistory()` maps between them; that mapping is what keeps JPA out of `assistant` and Spring AI out of `chat`. Do not "simplify" it by sharing a type across the boundary.
+
+### Streaming turn lifecycle
+
+`ChatFacade.prepareTurn()` splits the turn in two on purpose:
+
+1. **Synchronous, before the response body starts**: validate the chat exists (so a missing chat still yields a 404), read the context window **before** appending the user message, persist the user message, derive the title from the first message.
+2. **Returned `ChatTurn`**: the slow assistant call. `ChatStreamController` drives it inside a `StreamingResponseBody`, writing one NDJSON line per `StreamEvent` and flushing after each.
+
+`DefaultChatFacade.streamAnswer` accumulates deltas and persists the answer in a `finally` block — **full on completion, partial on error or client disconnect** — so a reload always matches what the user saw. `ChatClientAssistant` consumes `Flux.toStream()` in a try-with-resources so a client disconnect cancels the upstream Anthropic HTTP stream.
+
+Once streaming starts the HTTP status is committed, so mid-stream errors are part of the protocol, not a status code: the client receives an `ERROR` line with a `RETRYABLE`/`TERMINAL`/`UNKNOWN` classification and keeps any partial text.
+
+### Memory design — no Spring AI memory advisor
+
+The JPA message store is the single source of truth; the facade rebuilds model context manually every turn. This is not an oversight: `MessageWindowChatMemory.add()` calls `ChatMemoryRepository.saveAll()` with the *windowed* list under replace-all semantics, so backing it with the history table would truncate persisted history to the window size. `chat.context-window-size=0` (default) replays full history; a positive value caps to the last N messages.
+
+## Constraints that will bite
+
+- **Do not modify `pom.xml`** — standing project policy. The unused `spring-ai-spring-boot-testcontainers` dependency and the empty Initializr `<licenses>`/`<developers>`/`<scm>` placeholders stay as they are.
+- **Jackson 3**: Boot 4 auto-configures `tools.jackson.databind.ObjectMapper`. There is **no** Jackson 2 `ObjectMapper` bean. Annotations still come from `com.fasterxml.jackson.annotation` (see `StreamEvent`).
+- **This is not WebFlux.** `Flux` appears only where Spring AI hands one back, inside `ChatClientAssistant`. Everything runs on Servlet MVC with virtual threads (`spring.threads.virtual.enabled=true`, `spring.mvc.async.request-timeout=5m`). Do not re-expose reactive types.
+- **`spring.jpa.hibernate.ddl-auto=update` is mandatory**: Boot does not treat file-based H2 as "embedded", so the default would be `none`; `update` also creates Modulith's `EVENT_PUBLICATION` table.
+- **`spring.ai.retry.*` does not apply to Anthropic in Spring AI 2.0.** Retries are SDK-internal via `spring.ai.anthropic.max-retries`. There is no app-level retry.
+- **Anthropic SDK exceptions propagate unwrapped**, so `AnthropicErrorClassifier` walks the cause chain to classify them.
+- **Publishing an event from a non-transactional thread needs an explicit transaction.** `@ApplicationModuleListener` is `AFTER_COMMIT`; `AssistantErrorPublisher` wraps the publish in a `REQUIRES_NEW` `TransactionTemplate` because the streaming catch block runs on a virtual thread with no bound transaction — without it the event is silently dropped.
+- **`spring-boot-docker-compose` is deliberately absent**: it shells out to a literal `docker` binary, which breaks under podman.
+- Tests deliberately declare no `spring.datasource.url`, so each test context gets its own in-memory H2 and concurrently cached contexts cannot drop each other's tables.
+
+## Events
+
+| Event | Published by | Consumed by |
+|---|---|---|
+| `ChatCreatedEvent` | `DefaultConversationService.create()` | `ChatLifecycleAuditor` → `assistant.chats.created` |
+| `ChatDeletedEvent` | `DefaultConversationService.delete()` | `ChatLifecycleAuditor` → `assistant.chats.deleted` |
+| `AssistantErrorEvent` | `AssistantErrorPublisher` | `AssistantErrorAuditor` → `assistant.stream.errors{classification,error.type}` |

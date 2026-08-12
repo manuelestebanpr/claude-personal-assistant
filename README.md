@@ -42,23 +42,27 @@ tunables in `ChatProperties`.
 |---|---|---|---|
 | `ChatCreatedEvent` | `DefaultConversationService.create()` (inside `@Transactional`) | `ChatLifecycleAuditor` | INFO log + counter `assistant.chats.created` |
 | `ChatDeletedEvent` | `DefaultConversationService.delete()` | `ChatLifecycleAuditor` | INFO log + counter `assistant.chats.deleted` |
-| `AssistantErrorEvent` | `AssistantErrorPublisher` (wrapped in a `TransactionTemplate`, because reactive error callbacks run without a transaction and `@ApplicationModuleListener` is AFTER_COMMIT) | `AssistantErrorAuditor` | ERROR log + counter `assistant.stream.errors{classification,error.type}` |
+| `AssistantErrorEvent` | `AssistantErrorPublisher` (wrapped in a `REQUIRES_NEW` `TransactionTemplate`: the publish happens in a blocking catch block on a virtual thread with no bound transaction, and `@ApplicationModuleListener` is AFTER_COMMIT, so the event would otherwise be dropped) | `AssistantErrorAuditor` | ERROR log + counter `assistant.stream.errors{classification,error.type}` |
 
 ## How streaming works
 
 1. The browser POSTs `{"content": "..."}` to `/chats/{chatId}/messages/stream`.
-2. `ChatStreamController` returns a `StreamingResponseBody` that blocks over
-   `Flux.toStream()`, writing one NDJSON line per event and flushing after each. Virtual
-   threads (`spring.threads.virtual.enabled=true`) make the blocking iteration cheap;
+2. `ChatStreamController` calls `ChatFacade.prepareTurn(...)`, which does the fast half of the
+   turn synchronously — validate the chat (404 before the body starts), read the history
+   window *before* saving, save the user message, derive the title from the first message —
+   and returns a `ChatTurn` holding only the slow assistant call.
+3. The controller drives that `ChatTurn` inside a `StreamingResponseBody`, writing one NDJSON
+   line per event and flushing after each. Virtual threads
+   (`spring.threads.virtual.enabled=true`) make the blocking iteration cheap;
    `spring.mvc.async.request-timeout=5m` gives generation headroom.
-3. `DefaultChatFacade.streamAnswer` validates the chat (404 before the body starts), reads
-   the history window (before saving), saves the user message, derives the title from the
-   first message, then bridges `AssistantClient.stream(...)` into `StreamEvent`s. A
-   `doFinally` hook persists the streamed answer — full on completion, partial on error or
-   client disconnect — so a reload always matches what the user saw.
+   `DefaultChatFacade.streamAnswer` bridges `AssistantClient.stream(...)` into `StreamEvent`s
+   and persists the streamed answer in a `finally` block — full on completion, partial on
+   error or client disconnect — so a reload always matches what the user saw.
 4. `ChatClientAssistant` replays history as user/assistant messages plus the shared system
    prompt (the only cross-chat context) and streams `ChatResponse` chunks, filtering to text
-   deltas.
+   deltas. It consumes the Spring AI `Flux` via `toStream()` in a try-with-resources, so a
+   client disconnect propagates out of the loop, closes the `Stream`, and cancels the upstream
+   Anthropic HTTP stream.
 5. The browser consumes the response with `fetch()` + `ReadableStream`, splitting on
    newlines and JSON-parsing each line.
 
@@ -180,14 +184,16 @@ Modulith's `EVENT_PUBLICATION` table.
 
 | Test | What it covers |
 |---|---|
-| `ModularityTests` | `ApplicationModules.verify()` + Modulith docs generation (`target/spring-modulith-docs`) |
+| `ModularityTests` | `ApplicationModules.verify()`, an assertion pinning the module set to exactly `{assistant, audit, chat}`, and Modulith docs generation (`target/spring-modulith-docs`) |
 | `ClaudePersonalAssistantApplicationTests` | context boots against the Testcontainers LGTM stack (needs Docker/podman) |
 | `ChatPageControllerTest` / `ChatStreamControllerTest` | `@WebMvcTest` slices; the stream test drives MockMvc's `asyncStarted()` → `asyncDispatch()` two-step and asserts NDJSON lines |
 | `ChatModuleIntegrationTests` / `ChatContextWindowTests` | `@ApplicationModuleTest` with a mocked `AssistantClient`: lifecycle events, persistence + rehydration, partial-answer persistence on failure, window semantics |
+| `ChatOutboxAtomicityTests` | outbox atomicity: an event published in a transaction that rolls back leaves no `EVENT_PUBLICATION` row, because the registry's own JPA write joins the caller's transaction |
 | `ChatClientAssistantTest` | real `ChatClient` over a mocked `ChatModel`: block filtering and prompt ordering (system → history → user) |
 | `AnthropicErrorClassifierTest` / `ContentBlockLoggerTest` | classification matrix; block-transition logging |
 | `AssistantModuleEventTests` | stream failure publishes a classified `AssistantErrorEvent` |
 | `AuditModuleTests` | events increment the audit counters (with tags) |
+| `AuditModuleListenerFailureTests` | outbox retry: a throwing listener leaves *its own* publication incomplete (the precondition for `republish-outstanding-events-on-restart`) while the real auditor still completes for the same event |
 
 Run a single class/method:
 
