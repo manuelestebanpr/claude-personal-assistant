@@ -9,10 +9,10 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.my.custom.claudepersonalassistant.chat.ChatCreatedEvent;
-import com.my.custom.claudepersonalassistant.chat.ChatDeletedEvent;
-import com.my.custom.claudepersonalassistant.chat.ChatProperties;
-import com.my.custom.claudepersonalassistant.chat.ConversationDto;
+import com.my.custom.claudepersonalassistant.chat.config.ChatProperties;
+import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
+import com.my.custom.claudepersonalassistant.chat.event.ChatCreatedEvent;
+import com.my.custom.claudepersonalassistant.chat.event.ChatDeletedEvent;
 import com.my.custom.claudepersonalassistant.chat.persistence.ConversationEntity;
 import com.my.custom.claudepersonalassistant.chat.persistence.ConversationRepository;
 

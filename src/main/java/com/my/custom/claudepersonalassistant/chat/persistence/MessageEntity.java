@@ -1,7 +1,5 @@
 package com.my.custom.claudepersonalassistant.chat.persistence;
 
-import java.time.Instant;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -12,11 +10,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+import java.time.Instant;
+
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import com.my.custom.claudepersonalassistant.chat.MessageRole;
+import com.my.custom.claudepersonalassistant.chat.dto.MessageRole;
 
 @Entity
 @Table(name = "chat_message",

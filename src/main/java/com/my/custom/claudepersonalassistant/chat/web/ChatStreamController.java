@@ -5,7 +5,6 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 
 import lombok.RequiredArgsConstructor;
-// Boot 4 auto-configures Jackson 3 (tools.jackson) — there is no Jackson 2 ObjectMapper bean.
 import tools.jackson.databind.ObjectMapper;
 
 import org.springframework.http.MediaType;
@@ -17,9 +16,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
-import com.my.custom.claudepersonalassistant.chat.ChatFacade;
-import com.my.custom.claudepersonalassistant.chat.ChatTurn;
-import com.my.custom.claudepersonalassistant.chat.StreamEvent;
+import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
+import com.my.custom.claudepersonalassistant.chat.api.ChatTurn;
+import com.my.custom.claudepersonalassistant.chat.dto.StreamEvent;
 
 /**
  * Streams assistant answers as NDJSON over the servlet OutputStream. The chat module writes

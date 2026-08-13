@@ -155,6 +155,75 @@ html, body {
     padding: 16px 24px;
     border-top: 1px solid #e3e6eb;
     background: #ffffff;
+    /* Anchors the tool palette, which floats above the composer rather than pushing it down. */
+    position: relative;
+}
+
+/* --- Tool palette (opened by typing "/") --- */
+
+.tool-palette {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 24px;
+    right: 24px;
+    max-height: 260px;
+    overflow-y: auto;
+    background: #ffffff;
+    border: 1px solid #cdd3dc;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
+    z-index: 10;
+}
+
+.tool-palette-title {
+    margin: 0;
+    padding: 10px 14px 6px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #656d76;
+}
+
+.tool-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 6px;
+}
+
+.tool-option {
+    display: block;
+    width: 100%;
+    padding: 8px 14px;
+    border: none;
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.tool-option:hover,
+.tool-option:focus,
+.tool-option.active {
+    background: #eef3fd;
+    outline: none;
+}
+
+.tool-option-name {
+    display: block;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.tool-option-description {
+    display: block;
+    font-size: 13px;
+    color: #656d76;
+}
+
+.tool-empty {
+    padding: 8px 14px 12px;
+    font-size: 13px;
+    color: #656d76;
 }
 
 .message-input {

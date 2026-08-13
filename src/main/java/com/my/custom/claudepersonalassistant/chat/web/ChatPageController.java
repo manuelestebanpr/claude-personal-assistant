@@ -8,9 +8,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 
-import com.my.custom.claudepersonalassistant.chat.ChatFacade;
-import com.my.custom.claudepersonalassistant.chat.ConversationDto;
-import com.my.custom.claudepersonalassistant.chat.ConversationView;
+import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
+import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
+import com.my.custom.claudepersonalassistant.chat.dto.ConversationView;
 
 /**
  * Server-rendered chat UI: sidebar with conversations, message pane, composer.

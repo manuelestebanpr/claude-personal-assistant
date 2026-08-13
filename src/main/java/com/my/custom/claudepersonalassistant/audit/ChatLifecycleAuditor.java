@@ -8,8 +8,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
 
-import com.my.custom.claudepersonalassistant.chat.ChatCreatedEvent;
-import com.my.custom.claudepersonalassistant.chat.ChatDeletedEvent;
+import com.my.custom.claudepersonalassistant.chat.event.ChatCreatedEvent;
+import com.my.custom.claudepersonalassistant.chat.event.ChatDeletedEvent;
 
 /**
  * Audits chat lifecycle events with structured logs and counters.

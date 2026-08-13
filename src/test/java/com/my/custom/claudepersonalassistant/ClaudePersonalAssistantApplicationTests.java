@@ -1,6 +1,7 @@
 package com.my.custom.claudepersonalassistant;
 
 import org.junit.jupiter.api.Test;
+
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 

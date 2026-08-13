@@ -2,6 +2,7 @@ package com.my.custom.claudepersonalassistant.chat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Test;
@@ -12,17 +13,34 @@ import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.Scenario;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import com.my.custom.claudepersonalassistant.assistant.AssistantClient;
-import com.my.custom.claudepersonalassistant.assistant.AssistantException;
-import com.my.custom.claudepersonalassistant.assistant.AssistantRequest;
-import com.my.custom.claudepersonalassistant.assistant.ClassifiedError;
-import com.my.custom.claudepersonalassistant.assistant.ErrorClassification;
-import com.my.custom.claudepersonalassistant.assistant.HistoryMessage;
-import com.my.custom.claudepersonalassistant.assistant.HistoryRole;
+import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.dto.AssistantRequest;
+import com.my.custom.claudepersonalassistant.assistant.dto.ClassifiedError;
+import com.my.custom.claudepersonalassistant.assistant.dto.ErrorClassification;
+import com.my.custom.claudepersonalassistant.assistant.dto.HistoryMessage;
+import com.my.custom.claudepersonalassistant.assistant.dto.HistoryRole;
+import com.my.custom.claudepersonalassistant.assistant.exception.AssistantException;
+import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
+import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
+import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
+import com.my.custom.claudepersonalassistant.chat.dto.ConversationView;
+import com.my.custom.claudepersonalassistant.chat.dto.MessageRole;
+import com.my.custom.claudepersonalassistant.chat.dto.StreamEvent;
+import com.my.custom.claudepersonalassistant.chat.dto.ToolDto;
+import com.my.custom.claudepersonalassistant.chat.event.ChatCreatedEvent;
+import com.my.custom.claudepersonalassistant.chat.event.ChatDeletedEvent;
+import com.my.custom.claudepersonalassistant.chat.service.ChatNotFoundException;
+import com.my.custom.claudepersonalassistant.mcp.api.McpClientException;
+import com.my.custom.claudepersonalassistant.mcp.api.McpToolGateway;
+import com.my.custom.claudepersonalassistant.mcp.api.ToolDescriptor;
+import com.my.custom.claudepersonalassistant.mcp.api.ToolInvocation;
+import com.my.custom.claudepersonalassistant.mcp.api.ToolResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -32,6 +50,9 @@ class ChatModuleIntegrationTests {
 
     @MockitoBean
     private AssistantClient assistantClient;
+
+    @MockitoBean
+    private McpToolGateway toolGateway;
 
     @Autowired
     private ChatFacade chatFacade;
@@ -158,5 +179,66 @@ class ChatModuleIntegrationTests {
                 new HistoryMessage(HistoryRole.ASSISTANT, "ok"),
                 new HistoryMessage(HistoryRole.USER, "m2"),
                 new HistoryMessage(HistoryRole.ASSISTANT, "ok"));
+    }
+
+    @Test
+    void listsToolsTranslatedIntoTheChatModuleSOwnView() {
+        given(toolGateway.listTools()).willReturn(List.of(new ToolDescriptor(
+                "get_current_hour", "Current hour", "Returns the time.",
+                Map.of("type", "object", "additionalProperties", false))));
+
+        assertThat(chatFacade.listTools()).containsExactly(
+                new ToolDto("get_current_hour", "Current hour", "Returns the time.", true));
+    }
+
+    @Test
+    void fallsBackToTheToolNameWhenTheServerGivesNoTitle() {
+        given(toolGateway.listTools()).willReturn(List.of(
+                new ToolDescriptor("get_current_hour", null, "Returns the time.", Map.of())));
+
+        assertThat(chatFacade.listTools()).extracting(ToolDto::title).containsExactly("get_current_hour");
+    }
+
+    /** Losing the tool catalogue must not take the chat down with it. */
+    @Test
+    void reportsNoToolsWhenTheMcpServerIsUnreachable() {
+        given(toolGateway.listTools()).willThrow(new McpClientException("connection refused"));
+
+        assertThat(chatFacade.listTools()).isEmpty();
+    }
+
+    @Test
+    void executingAToolPersistsItsOutputAndFeedsTheNextTurn() {
+        given(toolGateway.callTool(ToolInvocation.of("get_current_hour")))
+                .willReturn(ToolResult.ok("The current time is 21:07 (Europe/Madrid)."));
+        willAnswer(invocation -> {
+            Consumer<String> onDelta = invocation.getArgument(1);
+            onDelta.accept("It is 21:07.");
+            return null;
+        }).given(assistantClient).stream(any(), any());
+        ConversationDto chat = chatFacade.createConversation();
+
+        ChatMessageDto recorded = chatFacade.executeTool(chat.id(), "get_current_hour", Map.of());
+
+        assertThat(recorded.role()).isEqualTo(MessageRole.ASSISTANT);
+        assertThat(recorded.content()).isEqualTo("The current time is 21:07 (Europe/Madrid).");
+        // Survives a reload...
+        assertThat(chatFacade.openConversation(chat.id()).messages())
+                .extracting(ChatMessageDto::role, ChatMessageDto::content)
+                .containsExactly(tuple(MessageRole.ASSISTANT, "The current time is 21:07 (Europe/Madrid)."));
+
+        // ...and becomes model context, which is what lets the model answer a question it cannot
+        // answer on its own.
+        chatFacade.prepareTurn(chat.id(), "What time is it?").stream(event -> { });
+        ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
+        verify(assistantClient).stream(requests.capture(), any());
+        assertThat(requests.getValue().history()).containsExactly(
+                new HistoryMessage(HistoryRole.ASSISTANT, "The current time is 21:07 (Europe/Madrid)."));
+    }
+
+    @Test
+    void executingAToolOnAMissingChatFails() {
+        assertThatThrownBy(() -> chatFacade.executeTool(4242L, "get_current_hour", Map.of()))
+                .isInstanceOf(ChatNotFoundException.class);
     }
 }

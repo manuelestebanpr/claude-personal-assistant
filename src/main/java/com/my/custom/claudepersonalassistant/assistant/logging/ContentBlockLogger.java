@@ -1,5 +1,6 @@
 package com.my.custom.claudepersonalassistant.assistant.logging;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,6 +11,8 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+
+import com.my.custom.claudepersonalassistant.assistant.config.AssistantMetrics;
 
 /**
  * Structured logging of Anthropic content blocks: block-type transitions and per-block chunk
@@ -38,6 +41,12 @@ public class ContentBlockLogger {
     static final String KEY_ERROR = "error";
 
     private static final Logger log = LoggerFactory.getLogger(ContentBlockLogger.class);
+
+    private final MeterRegistry meterRegistry;
+
+    public ContentBlockLogger(MeterRegistry meterRegistry) {
+        this.meterRegistry = meterRegistry;
+    }
 
     public StreamSession newSession(Long conversationId) {
         return new StreamSession(conversationId);
@@ -80,6 +89,28 @@ public class ContentBlockLogger {
                     .addKeyValue(KEY_COMPLETION_TOKENS, usage != null ? usage.getCompletionTokens() : null)
                     .addKeyValue(KEY_TOTAL_CHUNKS, totalChunks)
                     .log(COMPLETED_MESSAGE);
+            recordTokenUsage();
+        }
+
+        /**
+         * Token usage is only known once the stream finishes, and this is the one place that
+         * already holds it — counting it here avoids threading the figure back out through the
+         * client just to meter it.
+         */
+        private void recordTokenUsage() {
+            if (usage == null) {
+                return;
+            }
+            countTokens(AssistantMetrics.TYPE_PROMPT, usage.getPromptTokens());
+            countTokens(AssistantMetrics.TYPE_COMPLETION, usage.getCompletionTokens());
+        }
+
+        private void countTokens(String type, Integer tokens) {
+            if (tokens == null || tokens <= 0) {
+                return;
+            }
+            meterRegistry.counter(AssistantMetrics.TOKENS, AssistantMetrics.TAG_TYPE, type)
+                    .increment(tokens);
         }
 
         public void onError(Throwable error) {

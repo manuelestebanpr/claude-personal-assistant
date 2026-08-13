@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import reactor.core.publisher.Flux;
 
@@ -14,14 +16,15 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.stereotype.Component;
 
-import com.my.custom.claudepersonalassistant.assistant.AssistantClient;
-import com.my.custom.claudepersonalassistant.assistant.AssistantErrorEvent;
-import com.my.custom.claudepersonalassistant.assistant.AssistantException;
-import com.my.custom.claudepersonalassistant.assistant.AssistantRequest;
-import com.my.custom.claudepersonalassistant.assistant.ClassifiedError;
-import com.my.custom.claudepersonalassistant.assistant.HistoryMessage;
+import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.config.AssistantMetrics;
+import com.my.custom.claudepersonalassistant.assistant.dto.AssistantRequest;
+import com.my.custom.claudepersonalassistant.assistant.dto.ClassifiedError;
+import com.my.custom.claudepersonalassistant.assistant.dto.HistoryMessage;
 import com.my.custom.claudepersonalassistant.assistant.error.AnthropicErrorClassifier;
 import com.my.custom.claudepersonalassistant.assistant.error.AssistantErrorPublisher;
+import com.my.custom.claudepersonalassistant.assistant.event.AssistantErrorEvent;
+import com.my.custom.claudepersonalassistant.assistant.exception.AssistantException;
 import com.my.custom.claudepersonalassistant.assistant.logging.BlockType;
 import com.my.custom.claudepersonalassistant.assistant.logging.ContentBlockLogger;
 
@@ -43,9 +46,12 @@ class ChatClientAssistant implements AssistantClient {
     private final AnthropicErrorClassifier errorClassifier;
     private final AssistantErrorPublisher errorPublisher;
     private final ContentBlockLogger contentBlockLogger;
+    private final MeterRegistry meterRegistry;
 
     @Override
     public void stream(AssistantRequest request, Consumer<String> onDelta) {
+        Timer.Sample sample = Timer.start(meterRegistry);
+        String outcome = AssistantMetrics.OUTCOME_SUCCESS;
         ContentBlockLogger.StreamSession session = contentBlockLogger.newSession(request.conversationId());
         Flux<ChatResponse> responses = chatClient.prompt()
                 .messages(toMessages(request.history()))
@@ -62,10 +68,17 @@ class ChatClientAssistant implements AssistantClient {
             });
             session.onComplete();
         } catch (RuntimeException error) {
+            outcome = AssistantMetrics.OUTCOME_FAILURE;
             session.onError(error);
             AssistantException mapped = new AssistantException(errorClassifier.classify(error), error);
             errorPublisher.publish(toEvent(request.conversationId(), mapped));
             throw mapped;
+        } finally {
+            sample.stop(Timer.builder(AssistantMetrics.MODULE_OPERATION)
+                    .tag(AssistantMetrics.TAG_MODULE, AssistantMetrics.MODULE)
+                    .tag(AssistantMetrics.TAG_OPERATION, AssistantMetrics.OPERATION_STREAM)
+                    .tag(AssistantMetrics.TAG_OUTCOME, outcome)
+                    .register(meterRegistry));
         }
     }
 

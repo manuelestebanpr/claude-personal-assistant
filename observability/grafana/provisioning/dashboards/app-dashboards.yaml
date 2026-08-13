@@ -1,0 +1,11 @@
+# Mounted into the otel-lgtm image's provisioning directory, alongside the dashboards it ships
+# itself (RED metrics, generic JVM). Grafana merges every provider file it finds there.
+apiVersion: 1
+
+providers:
+  - name: "Claude Personal Assistant"
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/app-dashboards
+      foldersFromFilesStructure: false

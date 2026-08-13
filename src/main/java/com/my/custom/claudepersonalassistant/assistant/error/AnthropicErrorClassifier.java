@@ -19,8 +19,8 @@ import com.anthropic.models.ErrorType;
 
 import org.springframework.stereotype.Component;
 
-import com.my.custom.claudepersonalassistant.assistant.ClassifiedError;
-import com.my.custom.claudepersonalassistant.assistant.ErrorClassification;
+import com.my.custom.claudepersonalassistant.assistant.dto.ClassifiedError;
+import com.my.custom.claudepersonalassistant.assistant.dto.ErrorClassification;
 
 /**
  * Classifies streaming failures by walking the cause chain for Anthropic SDK exceptions,

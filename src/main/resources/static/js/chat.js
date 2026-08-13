@@ -13,6 +13,11 @@
     const messages = document.getElementById('messages');
     const input = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
+    const palette = document.getElementById('tool-palette');
+    const toolList = document.getElementById('tool-list');
+
+    // Fetched once per page and reused: the catalogue only changes when the server restarts.
+    let toolsPromise = null;
 
     scrollToBottom();
 
@@ -26,11 +31,120 @@
     });
 
     input.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && isPaletteOpen()) {
+            event.preventDefault();
+            closePalette();
+            return;
+        }
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
+            if (isPaletteOpen()) {
+                closePalette();
+            }
             composer.requestSubmit();
         }
     });
+
+    // "/" opens the palette only at the start of the message, so a slash inside ordinary prose
+    // (a URL, a fraction) is just text.
+    input.addEventListener('input', function () {
+        if (input.value.startsWith('/')) {
+            openPalette(input.value.slice(1).trim().toLowerCase());
+        } else {
+            closePalette();
+        }
+    });
+
+    document.addEventListener('click', function (event) {
+        if (isPaletteOpen() && !composer.contains(event.target)) {
+            closePalette();
+        }
+    });
+
+    function isPaletteOpen() {
+        return palette && !palette.hidden;
+    }
+
+    function closePalette() {
+        if (palette) {
+            palette.hidden = true;
+        }
+    }
+
+    function loadTools() {
+        if (!toolsPromise) {
+            toolsPromise = fetch('/tools')
+                .then(response => (response.ok ? response.json() : []))
+                .catch(() => []);
+        }
+        return toolsPromise;
+    }
+
+    async function openPalette(filter) {
+        if (!palette) {
+            return;
+        }
+        const tools = await loadTools();
+        const matching = tools.filter(tool =>
+            !filter || tool.name.toLowerCase().includes(filter) || tool.title.toLowerCase().includes(filter));
+        renderPalette(matching);
+        palette.hidden = false;
+    }
+
+    function renderPalette(tools) {
+        toolList.replaceChildren();
+        if (tools.length === 0) {
+            const empty = document.createElement('li');
+            empty.className = 'tool-empty';
+            empty.textContent = 'No tools available.';
+            toolList.appendChild(empty);
+            return;
+        }
+        tools.forEach(function (tool) {
+            const item = document.createElement('li');
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'tool-option';
+            const name = document.createElement('span');
+            name.className = 'tool-option-name';
+            name.textContent = '/' + tool.name;
+            const description = document.createElement('span');
+            description.className = 'tool-option-description';
+            description.textContent = tool.description || '';
+            button.append(name, description);
+            button.addEventListener('click', () => runTool(tool));
+            item.appendChild(button);
+            toolList.appendChild(item);
+        });
+    }
+
+    async function runTool(tool) {
+        closePalette();
+        input.value = '';
+        setSending(true);
+        appendBubble('user', '/' + tool.name);
+        const resultBubble = appendBubble('assistant', '');
+        try {
+            const response = await fetch('/chats/' + encodeURIComponent(chatId) + '/tools/'
+                + encodeURIComponent(tool.name), {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({})
+            });
+            if (!response.ok) {
+                showError(resultBubble, null, 'Tool failed with status ' + response.status);
+                return;
+            }
+            const message = await response.json();
+            resultBubble.textContent = message.content;
+            scrollToBottom();
+        } catch (error) {
+            showError(resultBubble, null, 'Tool call failed: ' + error.message);
+        } finally {
+            setSending(false);
+            input.focus();
+        }
+    }
 
     async function sendMessage(text) {
         setSending(true);

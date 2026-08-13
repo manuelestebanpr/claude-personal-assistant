@@ -2,8 +2,8 @@ package com.my.custom.claudepersonalassistant.chat.service;
 
 import java.util.List;
 
-import com.my.custom.claudepersonalassistant.chat.ChatMessageDto;
-import com.my.custom.claudepersonalassistant.chat.MessageRole;
+import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
+import com.my.custom.claudepersonalassistant.chat.dto.MessageRole;
 
 /**
  * Message persistence: the JPA store is the single source of truth for chat memory. Not

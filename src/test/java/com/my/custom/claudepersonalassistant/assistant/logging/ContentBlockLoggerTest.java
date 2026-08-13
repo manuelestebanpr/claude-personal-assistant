@@ -7,6 +7,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,7 +46,7 @@ class ContentBlockLoggerTest {
 
     @Test
     void logsBlockTransitionsWithPerBlockChunkCounts() {
-        ContentBlockLogger.StreamSession session = new ContentBlockLogger().newSession(42L);
+        ContentBlockLogger.StreamSession session = new ContentBlockLogger(new SimpleMeterRegistry()).newSession(42L);
 
         session.onChunk(textChunk("Hel"));
         session.onChunk(textChunk("lo"));
@@ -65,7 +66,7 @@ class ContentBlockLoggerTest {
 
     @Test
     void discriminatesSignatureAndRedactedBlocks() {
-        ContentBlockLogger.StreamSession session = new ContentBlockLogger().newSession(42L);
+        ContentBlockLogger.StreamSession session = new ContentBlockLogger(new SimpleMeterRegistry()).newSession(42L);
 
         session.onChunk(metadataChunk(BlockType.METADATA_KEY_THINKING, "pondering"));
         session.onChunk(metadataChunk(BlockType.METADATA_KEY_SIGNATURE, "sig"));
@@ -78,7 +79,7 @@ class ContentBlockLoggerTest {
 
     @Test
     void logsCompletionSummaryWithFinishReasonAndUsage() {
-        ContentBlockLogger.StreamSession session = new ContentBlockLogger().newSession(42L);
+        ContentBlockLogger.StreamSession session = new ContentBlockLogger(new SimpleMeterRegistry()).newSession(42L);
 
         session.onChunk(textChunk("Hi"));
         session.onChunk(finalChunk("end_turn", new DefaultUsage(10, 20)));
@@ -95,7 +96,7 @@ class ContentBlockLoggerTest {
 
     @Test
     void logsErrorTermination() {
-        ContentBlockLogger.StreamSession session = new ContentBlockLogger().newSession(42L);
+        ContentBlockLogger.StreamSession session = new ContentBlockLogger(new SimpleMeterRegistry()).newSession(42L);
 
         session.onChunk(textChunk("Hi"));
         session.onError(new IllegalStateException("boom"));

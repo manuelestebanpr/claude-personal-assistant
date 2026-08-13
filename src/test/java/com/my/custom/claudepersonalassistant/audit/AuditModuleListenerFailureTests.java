@@ -13,7 +13,7 @@ import org.springframework.modulith.events.core.EventPublicationRegistry;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.Scenario;
 
-import com.my.custom.claudepersonalassistant.chat.ChatCreatedEvent;
+import com.my.custom.claudepersonalassistant.chat.event.ChatCreatedEvent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;

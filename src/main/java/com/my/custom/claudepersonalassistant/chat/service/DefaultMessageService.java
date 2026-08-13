@@ -11,9 +11,9 @@ import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.my.custom.claudepersonalassistant.chat.ChatMessageDto;
-import com.my.custom.claudepersonalassistant.chat.ChatProperties;
-import com.my.custom.claudepersonalassistant.chat.MessageRole;
+import com.my.custom.claudepersonalassistant.chat.config.ChatProperties;
+import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
+import com.my.custom.claudepersonalassistant.chat.dto.MessageRole;
 import com.my.custom.claudepersonalassistant.chat.persistence.MessageEntity;
 import com.my.custom.claudepersonalassistant.chat.persistence.MessageRepository;
 

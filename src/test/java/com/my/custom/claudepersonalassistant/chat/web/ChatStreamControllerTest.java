@@ -12,10 +12,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-import com.my.custom.claudepersonalassistant.assistant.ErrorClassification;
-import com.my.custom.claudepersonalassistant.chat.ChatFacade;
-import com.my.custom.claudepersonalassistant.chat.ChatTurn;
-import com.my.custom.claudepersonalassistant.chat.StreamEvent;
+import com.my.custom.claudepersonalassistant.assistant.dto.ErrorClassification;
+import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
+import com.my.custom.claudepersonalassistant.chat.api.ChatTurn;
+import com.my.custom.claudepersonalassistant.chat.dto.StreamEvent;
 import com.my.custom.claudepersonalassistant.chat.service.ChatNotFoundException;
 
 import static org.assertj.core.api.Assertions.assertThat;

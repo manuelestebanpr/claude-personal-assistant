@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Map;
 
 import com.anthropic.errors.RateLimitException;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -24,15 +26,15 @@ import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 
-import com.my.custom.claudepersonalassistant.assistant.AssistantConstants;
-import com.my.custom.claudepersonalassistant.assistant.AssistantErrorEvent;
-import com.my.custom.claudepersonalassistant.assistant.AssistantException;
-import com.my.custom.claudepersonalassistant.assistant.AssistantRequest;
-import com.my.custom.claudepersonalassistant.assistant.ErrorClassification;
-import com.my.custom.claudepersonalassistant.assistant.HistoryMessage;
-import com.my.custom.claudepersonalassistant.assistant.HistoryRole;
+import com.my.custom.claudepersonalassistant.assistant.config.AssistantConstants;
+import com.my.custom.claudepersonalassistant.assistant.dto.AssistantRequest;
+import com.my.custom.claudepersonalassistant.assistant.dto.ErrorClassification;
+import com.my.custom.claudepersonalassistant.assistant.dto.HistoryMessage;
+import com.my.custom.claudepersonalassistant.assistant.dto.HistoryRole;
 import com.my.custom.claudepersonalassistant.assistant.error.AnthropicErrorClassifier;
 import com.my.custom.claudepersonalassistant.assistant.error.AssistantErrorPublisher;
+import com.my.custom.claudepersonalassistant.assistant.event.AssistantErrorEvent;
+import com.my.custom.claudepersonalassistant.assistant.exception.AssistantException;
 import com.my.custom.claudepersonalassistant.assistant.logging.ContentBlockLogger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -63,8 +65,9 @@ class ChatClientAssistantTest {
         ChatClient chatClient = ChatClient.builder(chatModel)
                 .defaultSystem(AssistantConstants.SYSTEM_PROMPT)
                 .build();
+        MeterRegistry meterRegistry = new SimpleMeterRegistry();
         assistant = new ChatClientAssistant(chatClient, new AnthropicErrorClassifier(), errorPublisher,
-                new ContentBlockLogger());
+                new ContentBlockLogger(meterRegistry), meterRegistry);
     }
 
     @Test

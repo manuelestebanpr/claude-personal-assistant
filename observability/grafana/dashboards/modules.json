@@ -1,0 +1,167 @@
+{
+  "uid": "cpa-modules",
+  "title": "Claude Personal Assistant — Modules",
+  "tags": ["claude-personal-assistant", "modulith"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "job",
+        "label": "Service",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(app_module_operation_milliseconds_count, job)",
+        "current": { "text": "claude-personal-assistant", "value": "claude-personal-assistant" },
+        "refresh": 1,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Module boundaries",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Operations per second by module",
+      "description": "Every Spring Modulith module times its own boundary operations under app.module.operation, tagged with module and operation.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{module}} / {{operation}}",
+          "expr": "sum by (module, operation) (rate(app_module_operation_milliseconds_count{job=~\"$job\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Operation latency p95",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{module}} / {{operation}}",
+          "expr": "histogram_quantile(0.95, sum by (le, module, operation) (rate(app_module_operation_milliseconds_bucket{job=~\"$job\"}[$__rate_interval])))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Failed operations per second",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 20 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{module}} / {{operation}}",
+          "expr": "sum by (module, operation) (rate(app_module_operation_milliseconds_count{job=~\"$job\", outcome=\"failure\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "assistant",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Stream errors by classification",
+      "description": "Published as AssistantErrorEvent and counted by the audit module. RETRYABLE means rate limits or overload; TERMINAL means the request will fail again unchanged.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 20 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{classification}} / {{error_type}}",
+          "expr": "sum by (classification, error_type) (rate(assistant_stream_errors_total{job=~\"$job\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Anthropic token usage per second",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{type}}",
+          "expr": "sum by (type) (rate(assistant_tokens_total{job=~\"$job\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "chat",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }
+    },
+    {
+      "type": "stat",
+      "title": "Chats created",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 12, "x": 0, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(assistant_chats_created_total{job=~\"$job\"})" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Chats deleted",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(assistant_chats_deleted_total{job=~\"$job\"})" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "mcp",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool invocations per second",
+      "description": "Counted inside the mcp module for every tools/call, whether it arrived from the chat facade over loopback or from an external MCP client.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{tool}} ({{outcome}})",
+          "expr": "sum by (tool, outcome) (rate(mcp_tool_invocations_total{job=~\"$job\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool execution p95",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{tool}}",
+          "expr": "histogram_quantile(0.95, sum by (le, tool) (rate(mcp_tool_milliseconds_bucket{job=~\"$job\"}[$__rate_interval])))"
+        }
+      ]
+    }
+  ]
+}

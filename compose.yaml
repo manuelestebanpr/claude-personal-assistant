@@ -2,11 +2,26 @@
 # ANTHROPIC_API_KEY is read from .env (compose loads it natively).
 services:
   lgtm:
-    image: grafana/otel-lgtm:latest
+    image: docker.io/grafana/otel-lgtm:latest
     ports:
       - "3000:3000"   # Grafana UI
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
+    volumes:
+      # Grafana, Loki, Prometheus and Tempo all store under /data. Without this volume every
+      # telemetry point is discarded when the container is replaced, which looks exactly like
+      # "Grafana shows no data".
+      - lgtm-data:/data
+      # Provisioned alongside the dashboards the image ships itself.
+      - ./observability/grafana/provisioning/dashboards/app-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/app-dashboards.yaml:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/app-dashboards:ro
+    healthcheck:
+      # The image creates /tmp/ready once the collector and the whole stack are accepting data.
+      test: ["CMD", "test", "-f", "/tmp/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
   app:
     build: .
     ports:
@@ -20,4 +35,10 @@ services:
     volumes:
       - ./data:/app/data
     depends_on:
-      - lgtm
+      lgtm:
+        # Plain depends_on only orders container creation, so the app used to start pushing
+        # before the collector was listening and lose its first exports to ConnectException.
+        condition: service_healthy
+
+volumes:
+  lgtm-data:

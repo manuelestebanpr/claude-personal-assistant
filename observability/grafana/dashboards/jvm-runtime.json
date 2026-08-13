@@ -1,0 +1,214 @@
+{
+  "uid": "cpa-jvm-runtime",
+  "title": "Claude Personal Assistant — JVM & HTTP",
+  "tags": ["claude-personal-assistant", "jvm"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "job",
+        "label": "Service",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(jvm_memory_used_bytes, job)",
+        "current": { "text": "claude-personal-assistant", "value": "claude-personal-assistant" },
+        "refresh": 1,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Memory & GC",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Heap used vs max",
+      "description": "Micrometer publishes jvm.memory.* per pool; the name regex tolerates the unit suffix Prometheus appends on OTLP ingest.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "used",
+          "expr": "sum({__name__=~\"jvm_memory_used_bytes|jvm_memory_used\", job=~\"$job\", area=\"heap\"})"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "committed",
+          "expr": "sum({__name__=~\"jvm_memory_committed_bytes|jvm_memory_committed\", job=~\"$job\", area=\"heap\"})"
+        },
+        {
+          "refId": "C",
+          "legendFormat": "max",
+          "expr": "sum({__name__=~\"jvm_memory_max_bytes|jvm_memory_max\", job=~\"$job\", area=\"heap\"})"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Non-heap used by pool",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{id}}",
+          "expr": "sum by (id) ({__name__=~\"jvm_memory_used_bytes|jvm_memory_used\", job=~\"$job\", area=\"nonheap\"})"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "GC pause time per second",
+      "description": "Seconds of pause per wall-clock second. Sustained values near 1 mean the JVM is spending all its time collecting.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{cause}}",
+          "expr": "sum by (cause) (rate(jvm_gc_pause_milliseconds_sum{job=~\"$job\"}[$__rate_interval])) / 1000"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "GC collections per second",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{action}}",
+          "expr": "sum by (action) (rate(jvm_gc_pause_milliseconds_count{job=~\"$job\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Threads, classes, CPU",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Threads",
+      "description": "The app runs on virtual threads (spring.threads.virtual.enabled), so the live count stays low even under concurrent streaming.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "live",
+          "expr": "sum({__name__=~\"jvm_threads_live_threads|jvm_threads_live\", job=~\"$job\"})"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "daemon",
+          "expr": "sum({__name__=~\"jvm_threads_daemon_threads|jvm_threads_daemon\", job=~\"$job\"})"
+        },
+        {
+          "refId": "C",
+          "legendFormat": "peak",
+          "expr": "sum({__name__=~\"jvm_threads_peak_threads|jvm_threads_peak\", job=~\"$job\"})"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Classes loaded",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "loaded",
+          "expr": "sum({__name__=~\"jvm_classes_loaded_classes|jvm_classes_loaded\", job=~\"$job\"})"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU utilisation",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "process", "expr": "sum(process_cpu_usage{job=~\"$job\"})" },
+        { "refId": "B", "legendFormat": "system", "expr": "sum(system_cpu_usage{job=~\"$job\"})" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "HTTP",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request rate by endpoint",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{method}} {{uri}} ({{status}})",
+          "expr": "sum by (method, uri, status) (rate(http_server_requests_milliseconds_count{job=~\"$job\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p95 by endpoint",
+      "description": "Requires management.metrics.distribution.percentiles-histogram.http.server.requests=true; without the histogram there are no _bucket series to quantile over. The streaming endpoint is expected to be slow — it stays open for the whole answer.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{method}} {{uri}}",
+          "expr": "histogram_quantile(0.95, sum by (le, method, uri) (rate(http_server_requests_milliseconds_bucket{job=~\"$job\"}[$__rate_interval])))"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Server error ratio",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 35 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(http_server_requests_milliseconds_count{job=~\"$job\", outcome=\"SERVER_ERROR\"}[$__rate_interval])) / clamp_min(sum(rate(http_server_requests_milliseconds_count{job=~\"$job\"}[$__rate_interval])), 0.0001)"
+        }
+      ]
+    }
+  ]
+}

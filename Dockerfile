@@ -1,5 +1,7 @@
 # --- Build stage ---
-FROM maven:3-eclipse-temurin-25 AS build
+# Images are fully qualified: podman refuses to resolve short names without a
+# containers-registries.conf(5), while docker silently assumes Docker Hub.
+FROM docker.io/library/maven:3-eclipse-temurin-25 AS build
 WORKDIR /build
 
 # Cache the dependency layer separately from the sources.
@@ -10,7 +12,7 @@ COPY src ./src
 RUN mvn -q -B -DskipTests package
 
 # --- Runtime stage ---
-FROM eclipse-temurin:25-jre
+FROM docker.io/library/eclipse-temurin:25-jre
 WORKDIR /app
 
 COPY --from=build /build/target/*.jar app.jar

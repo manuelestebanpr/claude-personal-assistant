@@ -8,10 +8,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.Scenario;
 
-import com.my.custom.claudepersonalassistant.assistant.AssistantErrorEvent;
-import com.my.custom.claudepersonalassistant.assistant.ErrorClassification;
-import com.my.custom.claudepersonalassistant.chat.ChatCreatedEvent;
-import com.my.custom.claudepersonalassistant.chat.ChatDeletedEvent;
+import com.my.custom.claudepersonalassistant.assistant.dto.ErrorClassification;
+import com.my.custom.claudepersonalassistant.assistant.event.AssistantErrorEvent;
+import com.my.custom.claudepersonalassistant.chat.event.ChatCreatedEvent;
+import com.my.custom.claudepersonalassistant.chat.event.ChatDeletedEvent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

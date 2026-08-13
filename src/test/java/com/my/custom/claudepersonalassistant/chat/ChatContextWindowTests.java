@@ -10,10 +10,13 @@ import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import com.my.custom.claudepersonalassistant.assistant.AssistantClient;
-import com.my.custom.claudepersonalassistant.assistant.AssistantRequest;
-import com.my.custom.claudepersonalassistant.assistant.HistoryMessage;
-import com.my.custom.claudepersonalassistant.assistant.HistoryRole;
+import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.dto.AssistantRequest;
+import com.my.custom.claudepersonalassistant.assistant.dto.HistoryMessage;
+import com.my.custom.claudepersonalassistant.assistant.dto.HistoryRole;
+import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
+import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
+import com.my.custom.claudepersonalassistant.mcp.api.McpToolGateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -27,6 +30,9 @@ class ChatContextWindowTests {
 
     @MockitoBean
     private AssistantClient assistantClient;
+
+    @MockitoBean
+    private McpToolGateway toolGateway;
 
     @Autowired
     private ChatFacade chatFacade;

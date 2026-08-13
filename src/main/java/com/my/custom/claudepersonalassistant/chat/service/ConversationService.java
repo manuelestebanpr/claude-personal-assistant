@@ -2,7 +2,7 @@ package com.my.custom.claudepersonalassistant.chat.service;
 
 import java.util.List;
 
-import com.my.custom.claudepersonalassistant.chat.ConversationDto;
+import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
 
 /**
  * Conversation lifecycle: list, create, resolve, title derivation, delete. Not referenced

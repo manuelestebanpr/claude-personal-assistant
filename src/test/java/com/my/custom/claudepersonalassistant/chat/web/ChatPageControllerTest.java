@@ -10,11 +10,11 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import com.my.custom.claudepersonalassistant.chat.ChatFacade;
-import com.my.custom.claudepersonalassistant.chat.ChatMessageDto;
-import com.my.custom.claudepersonalassistant.chat.ConversationDto;
-import com.my.custom.claudepersonalassistant.chat.ConversationView;
-import com.my.custom.claudepersonalassistant.chat.MessageRole;
+import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
+import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
+import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
+import com.my.custom.claudepersonalassistant.chat.dto.ConversationView;
+import com.my.custom.claudepersonalassistant.chat.dto.MessageRole;
 import com.my.custom.claudepersonalassistant.chat.service.ChatNotFoundException;
 
 import static org.mockito.BDDMockito.given;

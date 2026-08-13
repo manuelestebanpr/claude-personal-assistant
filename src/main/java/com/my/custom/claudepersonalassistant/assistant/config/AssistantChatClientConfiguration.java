@@ -4,7 +4,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import com.my.custom.claudepersonalassistant.assistant.AssistantConstants;
+import com.my.custom.claudepersonalassistant.assistant.config.AssistantConstants;
 
 /**
  * Builds the module's {@link ChatClient} from the auto-configured (prototype)

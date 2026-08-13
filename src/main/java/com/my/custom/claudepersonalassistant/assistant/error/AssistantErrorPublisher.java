@@ -6,7 +6,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import com.my.custom.claudepersonalassistant.assistant.AssistantErrorEvent;
+import com.my.custom.claudepersonalassistant.assistant.event.AssistantErrorEvent;
 
 /**
  * Publishes {@link AssistantErrorEvent}s when a stream fails.

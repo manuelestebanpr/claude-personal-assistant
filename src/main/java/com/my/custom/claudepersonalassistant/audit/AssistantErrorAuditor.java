@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
 
-import com.my.custom.claudepersonalassistant.assistant.AssistantErrorEvent;
+import com.my.custom.claudepersonalassistant.assistant.event.AssistantErrorEvent;
 
 /**
  * Audits classified assistant stream failures with an error log and a tagged counter.

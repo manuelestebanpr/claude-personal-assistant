@@ -16,6 +16,12 @@ import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.Scenario;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.dto.AssistantRequest;
+import com.my.custom.claudepersonalassistant.assistant.dto.ErrorClassification;
+import com.my.custom.claudepersonalassistant.assistant.event.AssistantErrorEvent;
+import com.my.custom.claudepersonalassistant.assistant.exception.AssistantException;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;

@@ -11,7 +11,10 @@ import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.Scenario;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import com.my.custom.claudepersonalassistant.assistant.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
+import com.my.custom.claudepersonalassistant.chat.event.ChatCreatedEvent;
+import com.my.custom.claudepersonalassistant.mcp.api.McpToolGateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -27,6 +30,9 @@ class ChatOutboxAtomicityTests {
 
     @MockitoBean
     private AssistantClient assistantClient;
+
+    @MockitoBean
+    private McpToolGateway toolGateway;
 
     @Autowired
     private ChatFacade chatFacade;

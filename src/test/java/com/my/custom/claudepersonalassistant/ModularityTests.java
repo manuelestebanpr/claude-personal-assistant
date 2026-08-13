@@ -25,8 +25,8 @@ class ModularityTests {
     void hasExactlyTheExpectedModules() {
         // verify() only checks structural rules (no illegal internal-package reach, no
         // cycles, allowed-dependency violations); it doesn't pin the module set itself, so a
-        // stray top-level package would silently become a fourth module with no test signal.
+        // stray top-level package would silently become an extra module with no test signal.
         assertThat(modules.stream().map(module -> module.getIdentifier().toString()))
-                .containsExactlyInAnyOrder("assistant", "audit", "chat");
+                .containsExactlyInAnyOrder("assistant", "audit", "chat", "mcp");
     }
 }
