@@ -17,6 +17,7 @@ import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
 import com.my.custom.claudepersonalassistant.assistant.dto.AssistantRequest;
 import com.my.custom.claudepersonalassistant.assistant.dto.HistoryMessage;
 import com.my.custom.claudepersonalassistant.assistant.dto.HistoryRole;
+import com.my.custom.claudepersonalassistant.assistant.dto.ToolSpecification;
 import com.my.custom.claudepersonalassistant.assistant.exception.AssistantException;
 import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
 import com.my.custom.claudepersonalassistant.chat.api.ChatTurn;
@@ -91,24 +92,16 @@ class DefaultChatFacade implements ChatFacade {
             if (window.isEmpty()) {
                 conversationService.applyDerivedTitle(chatId, userText);
             }
-            return new AssistantRequest(chatId, toHistory(window), userText);
+            List<ToolSpecification> tools = availableTools().stream().map(this::toSpecification).toList();
+            return new AssistantRequest(chatId, toHistory(window), userText, tools);
         });
         return sink -> streamAnswer(chatId, request, sink);
     }
 
     @Override
     public List<ToolDto> listTools() {
-        try {
-            return timed(ChatMetrics.OPERATION_LIST_TOOLS,
-                    () -> toolGateway.listTools().stream().map(this::toDto).toList());
-        } catch (McpClientException unreachable) {
-            // The palette is an enhancement; an MCP server that is down must not stop the user
-            // from chatting, so this degrades to "no tools" instead of failing the page.
-            log.atWarn()
-                    .addKeyValue("error", unreachable.getClass().getSimpleName())
-                    .log("Tool catalogue unavailable: {}", unreachable.getMessage());
-            return List.of();
-        }
+        return timed(ChatMetrics.OPERATION_LIST_TOOLS,
+                () -> availableTools().stream().map(this::toDto).toList());
     }
 
     @Override
@@ -149,6 +142,25 @@ class DefaultChatFacade implements ChatFacade {
                 ? descriptor.name()
                 : descriptor.title();
         return new ToolDto(descriptor.name(), title, descriptor.description(), descriptor.takesNoArguments());
+    }
+
+    private ToolSpecification toSpecification(ToolDescriptor descriptor) {
+        return new ToolSpecification(descriptor.name(), descriptor.description(), descriptor.inputSchema());
+    }
+
+    /**
+     * Tools currently on offer, or none when the server is unreachable — an MCP outage is an
+     * enhancement lost, not a reason to fail the page or the turn.
+     */
+    private List<ToolDescriptor> availableTools() {
+        try {
+            return toolGateway.listTools();
+        } catch (McpClientException unreachable) {
+            log.atWarn()
+                    .addKeyValue("error", unreachable.getClass().getSimpleName())
+                    .log("Tool catalogue unavailable: {}", unreachable.getMessage());
+            return List.of();
+        }
     }
 
     private void streamAnswer(Long chatId, AssistantRequest request, Consumer<StreamEvent> sink) {

@@ -14,13 +14,18 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 
+import tools.jackson.databind.ObjectMapper;
+
 import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.api.ToolExecutor;
 import com.my.custom.claudepersonalassistant.assistant.config.AssistantMetrics;
 import com.my.custom.claudepersonalassistant.assistant.dto.AssistantRequest;
 import com.my.custom.claudepersonalassistant.assistant.dto.ClassifiedError;
 import com.my.custom.claudepersonalassistant.assistant.dto.HistoryMessage;
+import com.my.custom.claudepersonalassistant.assistant.dto.ToolSpecification;
 import com.my.custom.claudepersonalassistant.assistant.error.AnthropicErrorClassifier;
 import com.my.custom.claudepersonalassistant.assistant.error.AssistantErrorPublisher;
 import com.my.custom.claudepersonalassistant.assistant.event.AssistantErrorEvent;
@@ -47,6 +52,8 @@ class ChatClientAssistant implements AssistantClient {
     private final AssistantErrorPublisher errorPublisher;
     private final ContentBlockLogger contentBlockLogger;
     private final MeterRegistry meterRegistry;
+    private final ToolExecutor toolExecutor;
+    private final ObjectMapper objectMapper;
 
     @Override
     public void stream(AssistantRequest request, Consumer<String> onDelta) {
@@ -56,6 +63,7 @@ class ChatClientAssistant implements AssistantClient {
         Flux<ChatResponse> responses = chatClient.prompt()
                 .messages(toMessages(request.history()))
                 .user(request.userText())
+                .toolCallbacks(toToolCallbacks(request.tools()))
                 .stream()
                 .chatResponse();
         // try-with-resources: a client disconnect throws up through onDelta and out of
@@ -88,6 +96,12 @@ class ChatClientAssistant implements AssistantClient {
                     case USER -> new UserMessage(message.text());
                     case ASSISTANT -> new AssistantMessage(message.text());
                 })
+                .toList();
+    }
+
+    private List<ToolCallback> toToolCallbacks(List<ToolSpecification> tools) {
+        return tools.stream()
+                .<ToolCallback>map(tool -> new ToolCallbackAdapter(tool, toolExecutor, objectMapper))
                 .toList();
     }
 

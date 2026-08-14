@@ -23,14 +23,19 @@ import org.springframework.ai.chat.metadata.DefaultUsage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
-import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
 
+import tools.jackson.databind.json.JsonMapper;
+
+import com.my.custom.claudepersonalassistant.assistant.api.ToolExecutor;
 import com.my.custom.claudepersonalassistant.assistant.config.AssistantConstants;
 import com.my.custom.claudepersonalassistant.assistant.dto.AssistantRequest;
 import com.my.custom.claudepersonalassistant.assistant.dto.ErrorClassification;
 import com.my.custom.claudepersonalassistant.assistant.dto.HistoryMessage;
 import com.my.custom.claudepersonalassistant.assistant.dto.HistoryRole;
+import com.my.custom.claudepersonalassistant.assistant.dto.ToolExecutionResult;
+import com.my.custom.claudepersonalassistant.assistant.dto.ToolSpecification;
 import com.my.custom.claudepersonalassistant.assistant.error.AnthropicErrorClassifier;
 import com.my.custom.claudepersonalassistant.assistant.error.AssistantErrorPublisher;
 import com.my.custom.claudepersonalassistant.assistant.event.AssistantErrorEvent;
@@ -56,18 +61,22 @@ class ChatClientAssistantTest {
 
     private final ChatModel chatModel = mock(ChatModel.class);
     private final AssistantErrorPublisher errorPublisher = mock(AssistantErrorPublisher.class);
+    private final ToolExecutor toolExecutor = mock(ToolExecutor.class);
     private ChatClientAssistant assistant;
 
     @BeforeEach
     void createAssistant() {
         // DefaultChatClientUtils.toChatClientRequest mutates the model's options unconditionally.
-        given(chatModel.getOptions()).willReturn(ChatOptions.builder().build());
+        // Real providers (Anthropic included) return ToolCallingChatOptions from getOptions(), which
+        // is what lets the tool-calling advisor attach our callbacks at all; a plain ChatOptions here
+        // would silently make every tool-calling test below pass through with no tools offered.
+        given(chatModel.getOptions()).willReturn(ToolCallingChatOptions.builder().build());
         ChatClient chatClient = ChatClient.builder(chatModel)
                 .defaultSystem(AssistantConstants.SYSTEM_PROMPT)
                 .build();
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
         assistant = new ChatClientAssistant(chatClient, new AnthropicErrorClassifier(), errorPublisher,
-                new ContentBlockLogger(meterRegistry), meterRegistry);
+                new ContentBlockLogger(meterRegistry), meterRegistry, toolExecutor, JsonMapper.builder().build());
     }
 
     @Test
@@ -92,7 +101,7 @@ class ChatClientAssistantTest {
         AssistantRequest request = new AssistantRequest(7L,
                 List.of(new HistoryMessage(HistoryRole.USER, "earlier question"),
                         new HistoryMessage(HistoryRole.ASSISTANT, "earlier answer")),
-                "new question");
+                "new question", List.of());
 
         assistant.stream(request, delta -> { });
 
@@ -131,8 +140,49 @@ class ChatClientAssistantTest {
         assertThat(events.getValue().statusCode()).isEqualTo(429);
     }
 
+    @Test
+    void offersTheRequestSToolsToTheModel() {
+        given(chatModel.stream(any(Prompt.class))).willReturn(Flux.just(textChunk("ok")));
+        ToolSpecification tool = new ToolSpecification("get_current_hour", "Returns the time.",
+                Map.of("type", "object", "additionalProperties", false));
+        AssistantRequest request = new AssistantRequest(1L, List.of(), "What time is it?", List.of(tool));
+
+        assistant.stream(request, delta -> { });
+
+        ArgumentCaptor<Prompt> prompts = ArgumentCaptor.forClass(Prompt.class);
+        verify(chatModel).stream(prompts.capture());
+        ToolCallingChatOptions options = (ToolCallingChatOptions) prompts.getValue().getOptions();
+        assertThat(options.getToolCallbacks())
+                .extracting(callback -> callback.getToolDefinition().name())
+                .containsExactly("get_current_hour");
+    }
+
+    @Test
+    void executesAModelInitiatedToolCallAndStreamsTheFollowUpAnswer() {
+        AssistantMessage.ToolCall toolCall =
+                new AssistantMessage.ToolCall("call_1", "function", "get_current_hour", "{}");
+        ChatResponse toolCallResponse = ChatResponse.builder()
+                .generations(List.of(new Generation(
+                        AssistantMessage.builder().content("").toolCalls(List.of(toolCall)).build(),
+                        ChatGenerationMetadata.builder().finishReason("tool_calls").build())))
+                .metadata(ChatResponseMetadata.builder().usage(new DefaultUsage(5, 5)).build())
+                .build();
+        given(chatModel.stream(any(Prompt.class)))
+                .willReturn(Flux.just(toolCallResponse))
+                .willReturn(Flux.just(textChunk("It is 21:07."), finalChunk("end_turn")));
+        given(toolExecutor.execute("get_current_hour", Map.of())).willReturn(ToolExecutionResult.ok("21:07"));
+        ToolSpecification tool = new ToolSpecification("get_current_hour", "Returns the time.", Map.of());
+        AssistantRequest request = new AssistantRequest(1L, List.of(), "What time is it?", List.of(tool));
+
+        List<String> deltas = new ArrayList<>();
+        assistant.stream(request, deltas::add);
+
+        assertThat(deltas).containsExactly("It is 21:07.");
+        verify(toolExecutor).execute("get_current_hour", Map.of());
+    }
+
     private AssistantRequest request(Long conversationId) {
-        return new AssistantRequest(conversationId, List.of(), "hello");
+        return new AssistantRequest(conversationId, List.of(), "hello", List.of());
     }
 
     private ChatResponse textChunk(String text) {

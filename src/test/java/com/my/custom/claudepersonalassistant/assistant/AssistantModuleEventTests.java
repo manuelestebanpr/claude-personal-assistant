@@ -55,7 +55,7 @@ class AssistantModuleEventTests {
         given(chatModel.getOptions()).willReturn(ChatOptions.builder().build());
         given(chatModel.stream(any(Prompt.class))).willReturn(Flux.error(rateLimit));
 
-        AssistantRequest request = new AssistantRequest(77L, List.of(), "hello");
+        AssistantRequest request = new AssistantRequest(77L, List.of(), "hello", List.of());
 
         scenario.stimulate((Runnable) () -> {
                     try {

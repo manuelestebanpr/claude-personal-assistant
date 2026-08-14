@@ -19,6 +19,7 @@ import com.my.custom.claudepersonalassistant.assistant.dto.ClassifiedError;
 import com.my.custom.claudepersonalassistant.assistant.dto.ErrorClassification;
 import com.my.custom.claudepersonalassistant.assistant.dto.HistoryMessage;
 import com.my.custom.claudepersonalassistant.assistant.dto.HistoryRole;
+import com.my.custom.claudepersonalassistant.assistant.dto.ToolSpecification;
 import com.my.custom.claudepersonalassistant.assistant.exception.AssistantException;
 import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
 import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
@@ -234,6 +235,45 @@ class ChatModuleIntegrationTests {
         verify(assistantClient).stream(requests.capture(), any());
         assertThat(requests.getValue().history()).containsExactly(
                 new HistoryMessage(HistoryRole.ASSISTANT, "The current time is 21:07 (Europe/Madrid)."));
+    }
+
+    @Test
+    void offersTheModelTheCurrentToolCatalogueEachTurn() {
+        given(toolGateway.listTools()).willReturn(List.of(new ToolDescriptor(
+                "get_current_hour", "Current hour", "Returns the time.",
+                Map.of("type", "object", "additionalProperties", false))));
+        willAnswer(invocation -> {
+            Consumer<String> onDelta = invocation.getArgument(1);
+            onDelta.accept("ok");
+            return null;
+        }).given(assistantClient).stream(any(), any());
+        ConversationDto chat = chatFacade.createConversation();
+
+        chatFacade.prepareTurn(chat.id(), "What time is it?").stream(event -> { });
+
+        ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
+        verify(assistantClient).stream(requests.capture(), any());
+        assertThat(requests.getValue().tools()).containsExactly(new ToolSpecification(
+                "get_current_hour", "Returns the time.",
+                Map.of("type", "object", "additionalProperties", false)));
+    }
+
+    /** Losing the tool catalogue must not take the whole turn down with it either. */
+    @Test
+    void offersNoToolsToTheModelWhenTheMcpServerIsUnreachable() {
+        given(toolGateway.listTools()).willThrow(new McpClientException("connection refused"));
+        willAnswer(invocation -> {
+            Consumer<String> onDelta = invocation.getArgument(1);
+            onDelta.accept("ok");
+            return null;
+        }).given(assistantClient).stream(any(), any());
+        ConversationDto chat = chatFacade.createConversation();
+
+        chatFacade.prepareTurn(chat.id(), "Hi").stream(event -> { });
+
+        ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
+        verify(assistantClient).stream(requests.capture(), any());
+        assertThat(requests.getValue().tools()).isEmpty();
     }
 
     @Test
