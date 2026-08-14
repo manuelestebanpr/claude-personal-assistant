@@ -97,11 +97,69 @@ Rules the endpoint must keep:
 
 Adding a tool = one `@Component` implementing `McpTool`. Nothing else changes.
 
-`chat` reaches the server through `McpToolGateway` over **real HTTP loopback**
-(`mcp.client.base-url`, default `http://localhost:8080`), not in-process — extracting the
-server later is a property change. Build its `RestClient` with `RestClient.builder()`, not an
-injected `RestClient.Builder`: `spring-boot-starter-webmvc` brings only the server side, so no
-such bean exists and asking for one stops the whole context from starting.
+### Gmail and Calendar are local tools, not a reused connector
+
+There is no Anthropic Gmail endpoint to point at. Claude's "Google Workspace connectors" are
+claude.ai acting as an MCP client against **Google's** remote MCP servers
+(`gmailmcp.googleapis.com`, `calendarmcp.googleapis.com`, …), with the OAuth client bound to the
+redirect URI `https://claude.ai/api/mcp/auth_callback`; nothing in that is addressable from here.
+Google's own servers are the reusable half — but they are gated behind the Workspace Developer
+Preview Program, which does not accept `@gmail.com` accounts.
+
+So `mcp/domain/tool/google/` calls the Gmail and Calendar **REST** APIs through the existing
+`McpTool` extension point, and gets the registry, the palette, `assistant.tools.invoked` and
+`ToolInvokedEvent` for free. `pom.xml` stays frozen: `RestClient` plus Jackson 3 plus a
+~50-line refresh-token grant in `mcp/client/google/GoogleAccessTokens` is the whole of it, where
+`spring-security-oauth2-client` would add an authorization-code flow nothing here performs.
+
+Rules this group must keep:
+- **`google.workspace.enabled` gates the lot**, via `@ConditionalOnGoogleWorkspace` on the clients
+  *and* every tool. They have to agree: a tool that outlives the clients stops the whole context
+  from starting for want of a `GmailClient` bean. Off by default, so the app boots and the suite
+  runs with no Google credentials at all.
+- **No send path exists.** `GmailClient` has a `createDraft` and no `messages.send`, so the
+  drafting-only boundary is structural rather than a line in the prompt — text injected into a mail
+  the model just read cannot talk it into emailing anyone.
+- **Headers are stripped of CR/LF before being written into the RFC 5322 message.** A newline in a
+  model-supplied subject would close the header block and let the rest be read as more headers.
+- **Every result is capped** (`google.workspace.limits.*`). A tool result goes straight into the
+  context window, and a Gmail query can match thousands of messages.
+- **Build schemas with `ToolSchema`, not `Map.of`.** `Map.of` randomises iteration order per JVM
+  start, so `tools/list` would serialise differently after each restart — the exact thing that
+  invalidates a model prompt cache.
+- If a Workspace domain ever arrives, the migration is a second `McpToolGateway` adapter pointing
+  at Google's servers — which speak an **older** MCP revision, so `HttpMcpToolGateway` (built for
+  `2026-07-28`, handshake-free) cannot be reused for it. `chat` would not change either way.
+
+### The client is multi-server; our own server is just the first entry
+
+`McpToolGateway` is a client of **several** MCP servers, configured as `mcp.servers[n].*`. Leaving
+the list unset assumes one entry — our own `/mcp` over **real HTTP loopback**, id `local` — so the
+protocol is genuinely exercised rather than short-circuited in process, and extracting the server
+later is a property change. Listing any server explicitly *replaces* that default, so include the
+local one if you still want it.
+
+- **Two revisions, chosen per server by `protocol`.** `STATELESS` (`2026-07-28`, what our server
+  speaks: no `initialize`, no session) and `SESSION` (up to `2025-11-25`: `initialize` →
+  `notifications/initialized` → `Mcp-Session-Id` on every later request, which is what most
+  third-party servers still want). The seam is `McpWireClient`; everything above it — listing,
+  calling, unpacking — is revision-independent.
+- **A tool name is unique per server, not globally.** `ToolDescriptor` and `ToolInvocation` both
+  carry `serverId` for that reason. The aggregated `listTools()` the model is offered drops a
+  duplicate name from a later server and logs it, because the model addresses tools by bare name
+  and could not express which it meant.
+- **The model names a tool but never a server**, so `McpToolExecutor` resolves one from the
+  catalogue and memoises it, dropping the route when a call fails so a restarted server recovers.
+- **An unreachable server is a row, not an exception.** `listServers()` never throws and
+  `listTools()` skips servers it cannot reach — one server being down must not cost the model the
+  others' tools, or take the page down.
+- Build every `RestClient` with `RestClient.builder()`, not an injected `RestClient.Builder`:
+  `spring-boot-starter-webmvc` brings only the server side, so no such bean exists and asking for
+  one stops the whole context from starting.
+
+**UI**: `!` opens the server picker, `!/` the tool picker (grouped by server, with each tool's
+argument schema rendered as a form). `/` opens nothing — a tool belongs to a server, and choosing
+one without saying which server was always ambiguous.
 
 ### Logging to OpenTelemetry is hand-written too
 

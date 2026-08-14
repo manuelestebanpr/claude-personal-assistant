@@ -36,13 +36,14 @@
             </th:block>
         </div>
         <form id="composer" class="composer" th:if="${currentChat != null}">
-            <!-- Populated from /tools the first time the user types "/" in an empty composer. -->
+            <!-- Populated from /mcp-servers on "!" and from /tools on "!/". -->
             <div id="tool-palette" class="tool-palette" hidden>
-                <p class="tool-palette-title">Available tools</p>
+                <p class="tool-palette-title" id="palette-title">MCP servers</p>
                 <ul id="tool-list" class="tool-list"></ul>
             </div>
             <textarea id="message-input" class="message-input" rows="2"
-                      placeholder="Send a message, or type / for tools&hellip;" autofocus></textarea>
+                      placeholder="Send a message, ! for MCP servers, !/ for their tools&hellip;"
+                      autofocus></textarea>
             <button id="send-button" class="send-button" type="submit">Send</button>
         </form>
     </main>

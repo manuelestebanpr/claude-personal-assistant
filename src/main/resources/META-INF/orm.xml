@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Widens Spring Modulith's EVENT_PUBLICATION.SERIALIZED_EVENT column.
+
+  JpaEventPublication maps `serializedEvent` as a plain @Column(nullable = false) with no
+  `length` and no @Lob, so `spring.jpa.hibernate.ddl-auto=update` creates it as
+  VARCHAR(255). Every event whose JSON exceeds that fails to INSERT:
+
+      Value too long for column "SERIALIZED_EVENT CHARACTER VARYING(255)":
+      "'{""conversationId"":1,""classification"":""TERMINAL"",""statusCode"":401,...
+
+  That insert is the transactional outbox write itself, so the failure rolls back the
+  publishing transaction and the @ApplicationModuleListener never runs — the audit metric
+  is silently lost. AssistantErrorEvent carries the provider's error message, which is
+  unbounded, so it crosses 255 routinely; the observed failure was 277 characters.
+
+  Overriding it here rather than in schema.sql keeps Hibernate the author of the whole
+  table (STATUS stays a native H2 ENUM, new Modulith columns still get added by `update`)
+  and needs no `spring.sql.init.*` ordering — which matters because
+  src/test/resources/application.properties shadows the main file instead of merging,
+  so a property-based fix would have to be duplicated to apply in tests.
+
+  JpaEventPublication is a @MappedSuperclass, so this covers both DefaultJpaEventPublication
+  (EVENT_PUBLICATION) and ArchivedJpaEventPublication (the archive table, if ever enabled).
+
+  Note that `update` never alters an existing column, so this only takes effect on a
+  database where the table has not been created yet.
+-->
+<entity-mappings xmlns="https://jakarta.ee/xml/ns/persistence/orm"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xsi:schemaLocation="https://jakarta.ee/xml/ns/persistence/orm
+                                     https://jakarta.ee/xml/ns/persistence/orm/orm_3_2.xsd"
+                 version="3.2">
+
+    <!--
+      access="FIELD" is required, not decorative: JpaEventPublication declares no getters at
+      all, and an orm.xml override with no access type is resolved as PROPERTY, which fails
+      the context with "Could not locate attribute member - serializedEvent".
+    -->
+    <mapped-superclass class="org.springframework.modulith.events.jpa.JpaEventPublication"
+                       access="FIELD">
+        <attributes>
+            <basic name="serializedEvent">
+                <column name="serialized_event" nullable="false" length="1000000"/>
+            </basic>
+        </attributes>
+    </mapped-superclass>
+
+</entity-mappings>

@@ -18,7 +18,7 @@ class CurrentHourToolTest {
     void reportsTheTimeInTheServerZone() {
         // 19:07 UTC is 21:07 in Madrid: the zone has to be applied, and stated, or the answer is
         // ambiguous to whoever reads it.
-        assertThat(tool.execute(Map.of())).isEqualTo("The current time is 21:07 (Europe/Madrid).");
+        assertThat(tool.execute(Map.of())).isEqualTo("21:07:40 (Europe/Madrid).");
     }
 
     @Test

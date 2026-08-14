@@ -68,6 +68,29 @@ class AuditModuleTests {
                 .andVerify(value -> assertThat(value).isEqualTo(before + 1));
     }
 
+    /**
+     * Guards {@code META-INF/orm.xml}. Modulith writes the outbox row <em>before</em> the listener
+     * runs, so an event whose JSON does not fit {@code SERIALIZED_EVENT} fails the publishing
+     * transaction and the listener never fires. Hibernate sizes that column from
+     * {@code JpaEventPublication}'s bare {@code @Column}, i.e. {@code VARCHAR(255)}, and
+     * {@code AssistantErrorEvent} carries the provider's unbounded error message — a real 401
+     * produced 277 characters and was dropped. Without the override this fails on the insert.
+     */
+    @Test
+    void assistantErrorEventLongerThanTheDefaultColumnStillReachesTheListener(Scenario scenario) {
+        String[] tags = {
+                AuditMetrics.TAG_CLASSIFICATION, ErrorClassification.TERMINAL.name(),
+                AuditMetrics.TAG_ERROR_TYPE, "authentication_error"
+        };
+        double before = counterValue(AuditMetrics.STREAM_ERRORS, tags);
+
+        scenario.publish(new AssistantErrorEvent(9L, ErrorClassification.TERMINAL, 401,
+                        "authentication_error", "x".repeat(2_000)))
+                .andWaitForStateChange(() -> counterValue(AuditMetrics.STREAM_ERRORS, tags),
+                        value -> value > before)
+                .andVerify(value -> assertThat(value).isEqualTo(before + 1));
+    }
+
     private double counterValue(String name, String... tags) {
         Counter counter = meterRegistry.find(name).tags(tags).counter();
         return counter == null ? 0.0 : counter.count();

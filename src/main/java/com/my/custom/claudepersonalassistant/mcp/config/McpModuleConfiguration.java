@@ -1,11 +1,17 @@
 package com.my.custom.claudepersonalassistant.mcp.config;
 
 import java.time.Clock;
+import java.time.ZoneId;
+import java.util.List;
+
+import tools.jackson.databind.ObjectMapper;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.client.RestClient;
+
+import com.my.custom.claudepersonalassistant.mcp.client.McpConnections;
+import com.my.custom.claudepersonalassistant.mcp.client.McpServerConnection;
 
 /**
  * Wiring of the MCP module.
@@ -17,16 +23,17 @@ public class McpModuleConfiguration {
     /** Injected into tools rather than read statically, so their output is testable. */
     @Bean
     Clock mcpClock() {
-        return Clock.system(java.time.ZoneId.of("America/Bogota"));
+        return Clock.system(ZoneId.of("America/Bogota"));
     }
 
     /**
-     * Built from a fresh builder rather than the auto-configured one: {@code
-     * spring-boot-starter-webmvc} brings the server side only, so no {@code RestClient.Builder}
-     * bean exists to inject and asking for one stops the whole context from starting.
+     * One connection per configured server, in configuration order.
+     *
+     * <p>Built here rather than discovered: a server is a line of configuration, not a bean, so
+     * there is nothing for component scanning to find.
      */
     @Bean
-    RestClient mcpRestClient(McpProperties properties) {
-        return RestClient.builder().baseUrl(properties.client().url()).build();
+    List<McpServerConnection> mcpServerConnections(McpProperties properties, ObjectMapper objectMapper) {
+        return McpConnections.from(properties.servers(), objectMapper);
     }
 }

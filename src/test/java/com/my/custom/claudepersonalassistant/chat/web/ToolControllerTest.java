@@ -41,7 +41,7 @@ class ToolControllerTest {
     @Test
     void listsTheToolsTheFacadeReports() throws Exception {
         given(chatFacade.listTools()).willReturn(List.of(
-                new ToolDto("get_current_hour", "Current hour", "Returns the time.", true)));
+                new ToolDto("local", "Local","get_current_hour", "Current hour", "Returns the time.", true, List.of())));
 
         mockMvc.perform(get(ToolController.TOOLS_PATH))
                 .andExpect(status().isOk())
@@ -52,10 +52,10 @@ class ToolControllerTest {
 
     @Test
     void executesAToolAndReturnsThePersistedMessage() throws Exception {
-        given(chatFacade.executeTool(eq(7L), eq("get_current_hour"), any()))
+        given(chatFacade.executeTool(eq(7L), eq("local"), eq("get_current_hour"), any()))
                 .willReturn(new ChatMessageDto(3L, MessageRole.ASSISTANT, "21:07", Instant.EPOCH));
 
-        mockMvc.perform(post("/chats/7/tools/get_current_hour")
+        mockMvc.perform(post("/chats/7/servers/local/tools/get_current_hour")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isOk())
@@ -65,18 +65,18 @@ class ToolControllerTest {
 
     @Test
     void toleratesAnAbsentRequestBody() throws Exception {
-        given(chatFacade.executeTool(anyLong(), anyString(), eq(Map.of())))
+        given(chatFacade.executeTool(anyLong(), anyString(), anyString(), eq(Map.of())))
                 .willReturn(new ChatMessageDto(3L, MessageRole.ASSISTANT, "21:07", Instant.EPOCH));
 
-        mockMvc.perform(post("/chats/7/tools/get_current_hour"))
+        mockMvc.perform(post("/chats/7/servers/local/tools/get_current_hour"))
                 .andExpect(status().isOk());
     }
 
     @Test
     void reportsAMissingChatAsNotFound() throws Exception {
-        willThrow(new ChatNotFoundException(99L)).given(chatFacade).executeTool(eq(99L), anyString(), any());
+        willThrow(new ChatNotFoundException(99L)).given(chatFacade).executeTool(eq(99L), anyString(), anyString(), any());
 
-        mockMvc.perform(post("/chats/99/tools/get_current_hour")
+        mockMvc.perform(post("/chats/99/servers/local/tools/get_current_hour")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isNotFound());

@@ -28,6 +28,7 @@ import com.my.custom.claudepersonalassistant.chat.dto.ConversationView;
 import com.my.custom.claudepersonalassistant.chat.dto.MessageRole;
 import com.my.custom.claudepersonalassistant.chat.dto.StreamEvent;
 import com.my.custom.claudepersonalassistant.chat.dto.ToolDto;
+import com.my.custom.claudepersonalassistant.chat.dto.ToolParameterDto;
 import com.my.custom.claudepersonalassistant.chat.event.ChatCreatedEvent;
 import com.my.custom.claudepersonalassistant.chat.event.ChatDeletedEvent;
 import com.my.custom.claudepersonalassistant.chat.service.ChatNotFoundException;
@@ -184,18 +185,39 @@ class ChatModuleIntegrationTests {
 
     @Test
     void listsToolsTranslatedIntoTheChatModuleSOwnView() {
-        given(toolGateway.listTools()).willReturn(List.of(new ToolDescriptor(
+        given(toolGateway.listTools()).willReturn(List.of(new ToolDescriptor("local", "Local",
                 "get_current_hour", "Current hour", "Returns the time.",
                 Map.of("type", "object", "additionalProperties", false))));
 
         assertThat(chatFacade.listTools()).containsExactly(
-                new ToolDto("get_current_hour", "Current hour", "Returns the time.", true));
+                new ToolDto("local", "Local","get_current_hour", "Current hour", "Returns the time.", true, List.of()));
+    }
+
+    /**
+     * The palette can only run a tool it can collect arguments for, so the fields have to survive
+     * the translation out of the MCP schema — in the order the server declared them.
+     */
+    @Test
+    void carriesEachToolSArgumentsThroughIntoTheViewModel() {
+        given(toolGateway.listTools()).willReturn(List.of(new ToolDescriptor("local", "Local",
+                "gmail_search_messages", "Search Gmail", "Searches Gmail.",
+                Map.of("type", "object",
+                        "properties", new java.util.LinkedHashMap<>(Map.of(
+                                "query", Map.of("type", "string", "description", "Gmail query."))),
+                        "required", List.of("query"),
+                        "additionalProperties", false))));
+
+        ToolDto tool = chatFacade.listTools().getFirst();
+
+        assertThat(tool.runnableAsIs()).isFalse();
+        assertThat(tool.parameters()).containsExactly(
+                new ToolParameterDto("query", "Gmail query.", "string", true));
     }
 
     @Test
     void fallsBackToTheToolNameWhenTheServerGivesNoTitle() {
         given(toolGateway.listTools()).willReturn(List.of(
-                new ToolDescriptor("get_current_hour", null, "Returns the time.", Map.of())));
+                new ToolDescriptor("local", "Local","get_current_hour", null, "Returns the time.", Map.of())));
 
         assertThat(chatFacade.listTools()).extracting(ToolDto::title).containsExactly("get_current_hour");
     }
@@ -210,7 +232,7 @@ class ChatModuleIntegrationTests {
 
     @Test
     void executingAToolPersistsItsOutputAndFeedsTheNextTurn() {
-        given(toolGateway.callTool(ToolInvocation.of("get_current_hour")))
+        given(toolGateway.callTool(ToolInvocation.of("local", "get_current_hour")))
                 .willReturn(ToolResult.ok("The current time is 21:07 (Europe/Madrid)."));
         willAnswer(invocation -> {
             Consumer<String> onDelta = invocation.getArgument(1);
@@ -219,7 +241,7 @@ class ChatModuleIntegrationTests {
         }).given(assistantClient).stream(any(), any());
         ConversationDto chat = chatFacade.createConversation();
 
-        ChatMessageDto recorded = chatFacade.executeTool(chat.id(), "get_current_hour", Map.of());
+        ChatMessageDto recorded = chatFacade.executeTool(chat.id(), "local", "get_current_hour", Map.of());
 
         assertThat(recorded.role()).isEqualTo(MessageRole.ASSISTANT);
         assertThat(recorded.content()).isEqualTo("The current time is 21:07 (Europe/Madrid).");
@@ -239,7 +261,7 @@ class ChatModuleIntegrationTests {
 
     @Test
     void offersTheModelTheCurrentToolCatalogueEachTurn() {
-        given(toolGateway.listTools()).willReturn(List.of(new ToolDescriptor(
+        given(toolGateway.listTools()).willReturn(List.of(new ToolDescriptor("local", "Local",
                 "get_current_hour", "Current hour", "Returns the time.",
                 Map.of("type", "object", "additionalProperties", false))));
         willAnswer(invocation -> {
@@ -278,7 +300,7 @@ class ChatModuleIntegrationTests {
 
     @Test
     void executingAToolOnAMissingChatFails() {
-        assertThatThrownBy(() -> chatFacade.executeTool(4242L, "get_current_hour", Map.of()))
+        assertThatThrownBy(() -> chatFacade.executeTool(4242L, "local", "get_current_hour", Map.of()))
                 .isInstanceOf(ChatNotFoundException.class);
     }
 }

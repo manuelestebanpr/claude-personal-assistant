@@ -25,9 +25,11 @@ import com.my.custom.claudepersonalassistant.chat.config.ChatMetrics;
 import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationView;
+import com.my.custom.claudepersonalassistant.chat.dto.McpServerDto;
 import com.my.custom.claudepersonalassistant.chat.dto.MessageRole;
 import com.my.custom.claudepersonalassistant.chat.dto.StreamEvent;
 import com.my.custom.claudepersonalassistant.chat.dto.ToolDto;
+import com.my.custom.claudepersonalassistant.chat.dto.ToolParameterDto;
 import com.my.custom.claudepersonalassistant.mcp.api.McpClientException;
 import com.my.custom.claudepersonalassistant.mcp.api.McpToolGateway;
 import com.my.custom.claudepersonalassistant.mcp.api.ToolDescriptor;
@@ -99,16 +101,25 @@ class DefaultChatFacade implements ChatFacade {
     }
 
     @Override
+    public List<McpServerDto> listServers() {
+        return timed(ChatMetrics.OPERATION_LIST_SERVERS, () -> toolGateway.listServers().stream()
+                .map(server -> new McpServerDto(server.id(), server.name(), server.url(),
+                        server.protocol(), server.reachable(), server.toolCount(), server.detail()))
+                .toList());
+    }
+
+    @Override
     public List<ToolDto> listTools() {
         return timed(ChatMetrics.OPERATION_LIST_TOOLS,
                 () -> availableTools().stream().map(this::toDto).toList());
     }
 
     @Override
-    public ChatMessageDto executeTool(Long chatId, String toolName, Map<String, Object> arguments) {
+    public ChatMessageDto executeTool(Long chatId, String serverId, String toolName,
+            Map<String, Object> arguments) {
         return timed(ChatMetrics.OPERATION_EXECUTE_TOOL, () -> {
             conversationService.get(chatId); // 404 for a missing chat, before running anything
-            ToolResult result = toolGateway.callTool(new ToolInvocation(toolName, arguments));
+            ToolResult result = toolGateway.callTool(new ToolInvocation(serverId, toolName, arguments));
             // Persisted as an assistant message so a reload matches the screen, and so the next
             // turn replays the answer as model context — which is what lets the model finally
             // answer questions it cannot answer on its own.
@@ -141,7 +152,15 @@ class DefaultChatFacade implements ChatFacade {
         String title = descriptor.title() == null || descriptor.title().isBlank()
                 ? descriptor.name()
                 : descriptor.title();
-        return new ToolDto(descriptor.name(), title, descriptor.description(), descriptor.takesNoArguments());
+        return new ToolDto(descriptor.serverId(), descriptor.serverName(), descriptor.name(), title,
+                descriptor.description(), descriptor.takesNoArguments(), toParameterDtos(descriptor));
+    }
+
+    private List<ToolParameterDto> toParameterDtos(ToolDescriptor descriptor) {
+        return descriptor.parameters().stream()
+                .map(parameter -> new ToolParameterDto(parameter.name(), parameter.description(),
+                        parameter.type(), parameter.required()))
+                .toList();
     }
 
     private ToolSpecification toSpecification(ToolDescriptor descriptor) {
@@ -149,8 +168,8 @@ class DefaultChatFacade implements ChatFacade {
     }
 
     /**
-     * Tools currently on offer, or none when the server is unreachable — an MCP outage is an
-     * enhancement lost, not a reason to fail the page or the turn.
+     * Tools currently on offer across every connected server, or none when none can be reached —
+     * an MCP outage is an enhancement lost, not a reason to fail the page or the turn.
      */
     private List<ToolDescriptor> availableTools() {
         try {

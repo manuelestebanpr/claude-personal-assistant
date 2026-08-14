@@ -6,6 +6,7 @@ import java.util.Map;
 import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationView;
+import com.my.custom.claudepersonalassistant.chat.dto.McpServerDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ToolDto;
 
 /**
@@ -31,20 +32,28 @@ public interface ChatFacade {
     ChatTurn prepareTurn(Long chatId, String userText);
 
     /**
-     * Tools the assistant can reach, for the palette the composer opens on {@code /}.
+     * The MCP servers this application connects to, for the picker the composer opens on
+     * {@code !} — including its own, which is just the first one configured.
      *
-     * <p>Resolved here rather than in the controller so the web layer never learns that tools come
-     * from an MCP server at all. Returns an empty list when that server cannot be reached: a tool
-     * catalogue is an enhancement, and losing it must not take the chat down with it.
+     * <p>Resolved here rather than in the controller so the web layer never learns what an MCP
+     * server is. Never throws: an unreachable server is a row that says so.
+     */
+    List<McpServerDto> listServers();
+
+    /**
+     * Every tool across every reachable server, for the picker the composer opens on {@code !/}.
+     *
+     * <p>Returns an empty list when nothing can be reached: a tool catalogue is an enhancement, and
+     * losing it must not take the chat down with it.
      */
     List<ToolDto> listTools();
 
     /**
-     * Runs a tool and records its output as an assistant message, so a reload shows what the user
-     * saw and the next turn carries the result as model context.
+     * Runs a tool on one named server and records its output as an assistant message, so a reload
+     * shows what the user saw and the next turn carries the result as model context.
      *
      * @throws com.my.custom.claudepersonalassistant.chat.service.ChatNotFoundException
      *         when the conversation does not exist
      */
-    ChatMessageDto executeTool(Long chatId, String toolName, Map<String, Object> arguments);
+    ChatMessageDto executeTool(Long chatId, String serverId, String toolName, Map<String, Object> arguments);
 }

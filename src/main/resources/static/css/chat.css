@@ -254,3 +254,119 @@ html, body {
     background: #9db8f4;
     cursor: default;
 }
+
+/* --- Tool argument form (shown when a palette tool needs arguments) --- */
+
+.tool-form {
+    display: block;
+    padding: 4px 14px 12px;
+}
+
+.tool-form-title {
+    margin: 0 0 8px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    color: #1f2328;
+}
+
+.tool-field {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.tool-field-name {
+    display: block;
+    margin-bottom: 3px;
+    font-size: 12px;
+    color: #656d76;
+}
+
+.tool-field-input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #cdd3dc;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 13px;
+    box-sizing: border-box;
+}
+
+.tool-field-input:focus {
+    outline: 2px solid #0969da;
+    outline-offset: -1px;
+}
+
+.tool-form-error {
+    margin: 0 0 8px;
+    font-size: 12px;
+    color: #cf222e;
+}
+
+.tool-form-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.tool-form-cancel,
+.tool-form-run {
+    padding: 6px 14px;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.tool-form-cancel {
+    border: 1px solid #cdd3dc;
+    background: #ffffff;
+    color: #1f2328;
+}
+
+.tool-form-run {
+    border: 1px solid transparent;
+    background: #1f6feb;
+    color: #ffffff;
+}
+
+/* --- Server / tool picker extras --- */
+
+.tool-group {
+    padding: 10px 14px 4px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #8c959f;
+}
+
+.server-status {
+    margin-left: 8px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.server-status.online {
+    background: #dafbe1;
+    color: #1a7f37;
+}
+
+.server-status.offline {
+    background: #ffebe9;
+    color: #cf222e;
+}
+
+.server-status.needs-input {
+    background: #fff8c5;
+    color: #7d4e00;
+}
+
+.tool-form-origin {
+    margin-left: 8px;
+    font-family: inherit;
+    font-size: 11px;
+    color: #8c959f;
+}

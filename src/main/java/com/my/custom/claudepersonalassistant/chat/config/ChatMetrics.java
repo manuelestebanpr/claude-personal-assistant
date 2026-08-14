@@ -26,6 +26,7 @@ public final class ChatMetrics {
     public static final String OPERATION_DELETE_CONVERSATION = "deleteConversation";
     public static final String OPERATION_PREPARE_TURN = "prepareTurn";
     public static final String OPERATION_STREAM_TURN = "streamTurn";
+    public static final String OPERATION_LIST_SERVERS = "listServers";
     public static final String OPERATION_LIST_TOOLS = "listTools";
     public static final String OPERATION_EXECUTE_TOOL = "executeTool";
 
