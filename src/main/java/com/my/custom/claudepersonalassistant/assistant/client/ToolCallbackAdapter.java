@@ -2,6 +2,7 @@ package com.my.custom.claudepersonalassistant.assistant.client;
 
 import java.util.Map;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 
@@ -32,7 +33,7 @@ class ToolCallbackAdapter implements ToolCallback {
     }
 
     @Override
-    public ToolDefinition getToolDefinition() {
+    public @NonNull ToolDefinition getToolDefinition() {
         return ToolDefinition.builder()
                 .name(specification.name())
                 .description(specification.description())
@@ -41,7 +42,7 @@ class ToolCallbackAdapter implements ToolCallback {
     }
 
     @Override
-    public String call(String toolInput) {
+    public @NonNull String call(@NonNull String toolInput) {
         Map<String, Object> arguments = objectMapper.readValue(toolInput, ARGUMENTS_TYPE);
         ToolExecutionResult result = toolExecutor.execute(specification.name(), arguments);
         return result.error() ? "Error: " + result.text() : result.text();

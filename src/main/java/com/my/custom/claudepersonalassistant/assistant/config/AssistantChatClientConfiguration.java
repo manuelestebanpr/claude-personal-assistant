@@ -6,7 +6,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import com.my.custom.claudepersonalassistant.assistant.api.ToolExecutor;
-import com.my.custom.claudepersonalassistant.assistant.config.AssistantConstants;
 import com.my.custom.claudepersonalassistant.assistant.dto.ToolExecutionResult;
 
 /**

@@ -63,7 +63,7 @@ class ChatClientAssistant implements AssistantClient {
         Flux<ChatResponse> responses = chatClient.prompt()
                 .messages(toMessages(request.history()))
                 .user(request.userText())
-                .toolCallbacks(toToolCallbacks(request.tools()))
+                .tools(toToolCallbacks(request.tools()))
                 .stream()
                 .chatResponse();
         // try-with-resources: a client disconnect throws up through onDelta and out of

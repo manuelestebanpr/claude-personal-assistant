@@ -72,7 +72,7 @@ class ChatModuleIntegrationTests {
     void deletingAChatPublishesChatDeletedEventAndRemovesIt(Scenario scenario) {
         ConversationDto created = chatFacade.createConversation();
 
-        scenario.stimulate((Runnable) () -> chatFacade.deleteConversation(created.id()))
+        scenario.stimulate(() -> chatFacade.deleteConversation(created.id()))
                 .andWaitForEventOfType(ChatDeletedEvent.class)
                 .matching(event -> event.chatId().equals(created.id()))
                 .toArriveAndVerify(event -> assertThat(chatFacade.listConversations())
