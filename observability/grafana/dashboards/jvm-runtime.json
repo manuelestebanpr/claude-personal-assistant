@@ -187,6 +187,7 @@
     {
       "type": "stat",
       "title": "Server error ratio",
+      "description": "The numerator is wrapped in `or vector(0)`: with no 5xx in the window it matches no series at all, and the panel would read \"No data\" in exactly the case where the answer is zero.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 5, "w": 24, "x": 0, "y": 35 },
       "fieldConfig": {
@@ -206,7 +207,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_server_requests_milliseconds_count{job=~\"$job\", outcome=\"SERVER_ERROR\"}[$__rate_interval])) / clamp_min(sum(rate(http_server_requests_milliseconds_count{job=~\"$job\"}[$__rate_interval])), 0.0001)"
+          "expr": "(sum(rate(http_server_requests_milliseconds_count{job=~\"$job\", outcome=\"SERVER_ERROR\"}[$__rate_interval])) or vector(0)) / clamp_min(sum(rate(http_server_requests_milliseconds_count{job=~\"$job\"}[$__rate_interval])), 0.0001)"
         }
       ]
     }

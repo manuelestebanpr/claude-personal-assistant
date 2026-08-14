@@ -2,8 +2,12 @@ package com.my.custom.claudepersonalassistant.assistant;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
+import com.anthropic.core.JsonValue;
+import com.anthropic.core.http.Headers;
 import com.anthropic.errors.RateLimitException;
+import com.anthropic.models.ErrorType;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 
@@ -26,7 +30,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.mock;
 
 /**
  * Widened to include {@code audit} so {@code AssistantErrorAuditor} — the real, only
@@ -46,11 +49,28 @@ class AssistantModuleEventTests {
     @Autowired
     private EventPublicationRegistry registry;
 
+    /**
+     * The body Anthropic returns with a 429, which is what {@code AnthropicServiceException
+     * .errorType()} parses ({@code body.error.type}) — the value that ends up on the
+     * {@code error.type} tag of {@code assistant.stream.errors}.
+     */
+    private static final JsonValue RATE_LIMIT_BODY = JsonValue.from(Map.of(
+            "type", "error",
+            "error", Map.of("type", "rate_limit_error", "message", "rate limited")));
+
     @Test
     void streamFailurePublishesClassifiedAssistantErrorEvent(Scenario scenario) {
-        RateLimitException rateLimit = mock(RateLimitException.class);
-        given(rateLimit.statusCode()).willReturn(429);
-        given(rateLimit.getMessage()).willReturn("rate limited");
+        // Build a real SDK exception rather than mocking one. A Mockito mock of a Throwable
+        // returns null from getStackTrace() (arrays are not among Mockito's default return
+        // values), and OpenTelemetry's StackTraceRenderer dereferences that array when
+        // TracingObservationHandler.onError records the failure on the span. Reactor treats a
+        // throwing onError callback as a new failure — Operators.onOperatorError propagates the
+        // resulting NPE and demotes the original to a *suppressed* exception — so the mock never
+        // reached AnthropicErrorClassifier's cause chain and every run classified UNKNOWN.
+        RateLimitException rateLimit = RateLimitException.builder()
+                .headers(Headers.builder().build())
+                .body(RATE_LIMIT_BODY)
+                .build();
         // DefaultChatClientUtils.toChatClientRequest mutates the model's options unconditionally.
         given(chatModel.getOptions()).willReturn(ChatOptions.builder().build());
         given(chatModel.stream(any(Prompt.class))).willReturn(Flux.error(rateLimit));
@@ -69,6 +89,7 @@ class AssistantModuleEventTests {
                 .toArriveAndVerify(event -> {
                     assertThat(event.classification()).isEqualTo(ErrorClassification.RETRYABLE);
                     assertThat(event.statusCode()).isEqualTo(429);
+                    assertThat(event.errorType()).isEqualTo(ErrorType.RATE_LIMIT_ERROR.asString());
                 });
 
         // The assertions above only prove ApplicationEventPublisher.publishEvent(...) was

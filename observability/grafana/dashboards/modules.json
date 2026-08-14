@@ -112,11 +112,12 @@
     {
       "type": "stat",
       "title": "Chats created",
+      "description": "`or vector(0)` so a counter that has not been incremented yet reads 0 rather than \"No data\" — a counter only exists in Prometheus once it has fired at least once.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 5, "w": 12, "x": 0, "y": 27 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "sum(assistant_chats_created_total{job=~\"$job\"})" }
+        { "refId": "A", "expr": "sum(assistant_chats_created_total{job=~\"$job\"}) or vector(0)" }
       ]
     },
     {
@@ -126,7 +127,7 @@
       "gridPos": { "h": 5, "w": 12, "x": 12, "y": 27 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "sum(assistant_chats_deleted_total{job=~\"$job\"})" }
+        { "refId": "A", "expr": "sum(assistant_chats_deleted_total{job=~\"$job\"}) or vector(0)" }
       ]
     },
     {

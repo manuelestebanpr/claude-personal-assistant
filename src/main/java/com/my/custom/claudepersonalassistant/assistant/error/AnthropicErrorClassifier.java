@@ -1,7 +1,11 @@
 package com.my.custom.claudepersonalassistant.assistant.error;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -32,13 +36,32 @@ public class AnthropicErrorClassifier {
     private static final int HTTP_TOO_MANY_REQUESTS = 429;
     private static final int HTTP_SERVER_ERROR_FLOOR = 500;
 
+    /**
+     * Searches causes first and only then suppressed exceptions, so an error whose own chain is
+     * classifiable is never overruled by something merely attached to it.
+     *
+     * <p>Suppressed exceptions are searched at all because a failing {@code onError}-side callback
+     * can displace the real error: Reactor's {@code Operators.onOperatorError} makes whatever the
+     * callback threw the propagated error and demotes the original to a suppressed one. A tracing
+     * handler or log appender blowing up would otherwise cost us the classification — the retry
+     * affordance in the UI and the {@code classification} tag on {@code assistant.stream.errors}
+     * both read from it.
+     */
     public ClassifiedError classify(Throwable error) {
         Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (Throwable current = error; current != null && seen.add(current); current = current.getCause()) {
-            ClassifiedError classified = classifyCause(current);
-            if (classified != null) {
-                return classified;
+        Deque<Throwable> pending = new ArrayDeque<>();
+        pending.add(error);
+        while (!pending.isEmpty()) {
+            List<Throwable> suppressed = new ArrayList<>();
+            for (Throwable current = pending.poll(); current != null && seen.add(current);
+                    current = current.getCause()) {
+                ClassifiedError classified = classifyCause(current);
+                if (classified != null) {
+                    return classified;
+                }
+                Collections.addAll(suppressed, current.getSuppressed());
             }
+            pending.addAll(suppressed);
         }
         return new ClassifiedError(ErrorClassification.UNKNOWN, null, null, messageOf(error));
     }

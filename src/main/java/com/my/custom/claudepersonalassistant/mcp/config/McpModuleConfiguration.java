@@ -17,7 +17,7 @@ public class McpModuleConfiguration {
     /** Injected into tools rather than read statically, so their output is testable. */
     @Bean
     Clock mcpClock() {
-        return Clock.systemDefaultZone();
+        return Clock.system(java.time.ZoneId.of("America/Bogota"));
     }
 
     /**

@@ -132,8 +132,12 @@ Spring AI 2.0.
 
 ## Observability
 
-Everything (traces, metrics, logs) is pushed over OTLP to a Grafana LGTM stack. Three things
-are worth knowing, because each one silently produces an empty Grafana if you get it wrong.
+Everything (traces, metrics, logs) is pushed over OTLP to a Grafana LGTM stack. The image runs
+Prometheus, Loki, Tempo, Pyroscope and Grafana behind an **OpenTelemetry Collector**
+(`otelcol-contrib`) — not Grafana Alloy; nothing in this project speaks to Alloy.
+
+Several things below are worth knowing, because each one silently produces an empty Grafana if
+you get it wrong.
 
 **Boot ships no Logback appender.** It auto-configures an `SdkLoggerProvider`, a batch
 processor and an OTLP log exporter — and then nothing feeds them, so log export appears
@@ -152,6 +156,23 @@ logged before the Spring context is ready are not exported; console output is un
 **Traces are sampled at 10% by default.** `management.tracing.sampling.probability=1.0` —
 on a single-user app the default makes Tempo look broken.
 
+**The test classpath shadows the main config.** `src/test/resources/application.properties`
+does not merge with `src/main/resources/application.properties`; `target/test-classes` precedes
+`target/classes` and Boot takes the first `classpath:/application.properties` it finds. So
+`spring-boot:test-run` — which launches from the test classpath — used to run on the test file
+alone: OTLP export off, sampling back to 10%, no histogram buckets. The shared telemetry tuning
+therefore lives in `src/main/resources/observability.properties`, imported by *both*
+`application.properties` files, and `TestClaudePersonalAssistantApplication` re-enables the
+export switches the test file deliberately turns off.
+
+**A container clock behind the host empties every metric panel.** Metric samples are stamped
+with the JVM's clock; if the podman/Docker VM lags the host (common on macOS after sleep),
+Prometheus sees them in its own future and drops them. The collector reports this only as
+`otelcol_exporter_send_failed_metric_points_total` climbing in lockstep with
+`otelcol_receiver_accepted_metric_points_total` — the app logs nothing and traces and logs keep
+working, so it reads as "metrics are broken". Fix the clock, not the config:
+`podman machine ssh <machine> "sudo date -s @$(date +%s)"`.
+
 **otel-lgtm keeps everything under `/data`.** Without a volume, every restart wipes Grafana,
 Loki, Prometheus and Tempo at once. `compose.yaml` mounts a named `lgtm-data` volume, and
 gates the app on `condition: service_healthy` so it cannot start pushing before the collector
@@ -168,7 +189,9 @@ is listening.
 ### Dashboards
 
 Two dashboards are provisioned from `observability/grafana/`, alongside the ones the image
-ships itself:
+ships itself — under compose by bind mount, and under `spring-boot:test-run` by
+`withCopyFileToContainer` in `TestcontainersConfiguration`, so both ways of running show the
+same Grafana:
 
 - **JVM & HTTP** — heap/non-heap by pool, GC pause time and collection rate, threads (low, by
   design: the app runs on virtual threads), classes, CPU, request rate, p95 latency and a

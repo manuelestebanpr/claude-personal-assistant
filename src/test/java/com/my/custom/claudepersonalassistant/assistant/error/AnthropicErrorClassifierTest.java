@@ -86,6 +86,48 @@ class AnthropicErrorClassifierTest {
         assertThat(error.statusCode()).isEqualTo(429);
     }
 
+    /**
+     * The shape Reactor produces when an {@code onError}-side callback throws:
+     * {@code Operators.onOperatorError} propagates whatever the callback threw and demotes the
+     * real failure to a suppressed exception. Observed for real when a tracing handler blew up
+     * mid-stream — see {@code AssistantModuleEventTests}.
+     */
+    @Test
+    void walksSuppressedExceptionsWhenNoCauseIsClassifiable() {
+        RateLimitException rateLimit = serviceException(RateLimitException.class, 429);
+        RuntimeException fromCallback = new NullPointerException("handler blew up");
+        fromCallback.addSuppressed(rateLimit);
+
+        ClassifiedError error = classifier.classify(fromCallback);
+
+        assertThat(error.classification()).isEqualTo(ErrorClassification.RETRYABLE);
+        assertThat(error.statusCode()).isEqualTo(429);
+    }
+
+    @Test
+    void prefersTheCauseChainOverSuppressedExceptions() {
+        RuntimeException wrapped = new RuntimeException("wrapper", serviceException(BadRequestException.class, 400));
+        wrapped.addSuppressed(serviceException(RateLimitException.class, 429));
+
+        ClassifiedError error = classifier.classify(wrapped);
+
+        assertThat(error.classification()).isEqualTo(ErrorClassification.TERMINAL);
+        assertThat(error.statusCode()).isEqualTo(400);
+    }
+
+    @Test
+    void terminatesOnCyclesBetweenSuppressedExceptions() {
+        RuntimeException first = new RuntimeException("first");
+        RuntimeException second = new RuntimeException("second");
+        first.addSuppressed(second);
+        second.addSuppressed(first);
+
+        ClassifiedError error = classifier.classify(first);
+
+        assertThat(error.classification()).isEqualTo(ErrorClassification.UNKNOWN);
+        assertThat(error.message()).isEqualTo("first");
+    }
+
     @Test
     void fallsBackToUnknownForUnrelatedErrors() {
         ClassifiedError error = classifier.classify(new IllegalStateException("boom"));

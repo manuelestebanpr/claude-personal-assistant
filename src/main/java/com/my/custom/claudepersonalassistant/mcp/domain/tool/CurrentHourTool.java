@@ -20,7 +20,7 @@ import com.my.custom.claudepersonalassistant.mcp.domain.McpTool;
 class CurrentHourTool implements McpTool {
 
     static final String NAME = "get_current_hour";
-    static final DateTimeFormatter FORMAT = DateTimeFormatter.ofPattern("HH:mm");
+    static final DateTimeFormatter FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private final Clock clock;
 
@@ -40,7 +40,7 @@ class CurrentHourTool implements McpTool {
 
     @Override
     public String description() {
-        return "Returns the current time of day on the server, with its time zone.";
+        return "Returns the current time of the mcp server use it when trying to estimate times from now. ";
     }
 
     @Override
@@ -53,6 +53,6 @@ class CurrentHourTool implements McpTool {
     @Override
     public String execute(Map<String, Object> arguments) {
         ZonedDateTime now = ZonedDateTime.now(clock);
-        return "The current time is %s (%s).".formatted(FORMAT.format(now), now.getZone());
+        return "%s (%s).".formatted(FORMAT.format(now), now.getZone());
     }
 }
