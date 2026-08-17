@@ -10,16 +10,19 @@ import com.my.custom.claudepersonalassistant.assistant.dto.ToolExecutionResult;
 
 /**
  * Builds the module's {@link ChatClient} from the auto-configured (prototype)
- * {@link ChatClient.Builder}, installing the shared system prompt.
+ * {@link ChatClient.Builder}.
+ *
+ * <p>No {@code defaultSystem} on purpose: the system prompt is per-assistant now, so both call
+ * sites — {@code ChatClientAssistant} with the profile's prompt, {@code ChatClientVision} with the
+ * extraction prompt — set it explicitly, and a default here would only hide a call site that
+ * forgot to.
  */
 @Configuration(proxyBeanMethods = false)
 class AssistantChatClientConfiguration {
 
     @Bean
     ChatClient assistantChatClient(ChatClient.Builder chatClientBuilder) {
-        return chatClientBuilder
-                .defaultSystem(AssistantConstants.SYSTEM_PROMPT)
-                .build();
+        return chatClientBuilder.build();
     }
 
     /**

@@ -10,10 +10,13 @@
 <main class="home">
     <h1 class="home-title">Choose an assistant</h1>
     <div class="assistant-grid">
-        <form th:action="@{/chats}" method="post" class="assistant-card-form">
+        <form th:each="assistant : ${assistants}" th:action="@{/chats}" method="post"
+              class="assistant-card-form">
+            <input type="hidden" name="assistant" th:value="${assistant.id()}"/>
             <button type="submit" class="assistant-card">
-                <span class="assistant-card-title">Default</span>
-                <span class="assistant-card-description">General-purpose assistant with chat history and MCP tools.</span>
+                <span class="assistant-card-title" th:text="${assistant.name()}">Default</span>
+                <span class="assistant-card-description"
+                      th:text="${assistant.description()}">General-purpose assistant.</span>
             </button>
         </form>
     </div>

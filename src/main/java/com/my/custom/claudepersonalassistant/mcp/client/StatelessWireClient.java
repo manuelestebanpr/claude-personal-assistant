@@ -34,11 +34,8 @@ class StatelessWireClient implements McpWireClient {
 
     @Override
     public JsonRpcResponse send(String method, String toolName, Map<String, Object> params) {
-        Map<String, Object> body = Map.of(
-                "jsonrpc", McpProtocol.JSONRPC_VERSION,
-                "id", requestIds.incrementAndGet(),
-                "method", method,
-                "params", withMeta(params));
+        JsonRpcRequestBody body =
+                JsonRpcRequestBody.of(requestIds.incrementAndGet(), method, withMeta(params));
         try {
             RestClient.RequestBodySpec request = restClient.post()
                     .uri(url)

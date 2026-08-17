@@ -11,6 +11,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
+import com.my.custom.claudepersonalassistant.chat.dto.AssistantDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationView;
@@ -36,10 +37,16 @@ class ChatPageControllerTest {
     private ChatFacade chatFacade;
 
     @Test
-    void indexRendersHomeView() throws Exception {
+    void indexRendersHomeViewWithOneCardPerAssistant() throws Exception {
+        List<AssistantDto> assistants = List.of(
+                new AssistantDto("default", "Personal Assistant", "General-purpose."),
+                new AssistantDto("groceries", "Groceries Assistant", "The grocery list."));
+        given(chatFacade.listAssistants()).willReturn(assistants);
+
         mockMvc.perform(get(ChatPageController.ROOT_PATH))
                 .andExpect(status().isOk())
-                .andExpect(view().name(ChatPageController.HOME_VIEW));
+                .andExpect(view().name(ChatPageController.HOME_VIEW))
+                .andExpect(model().attribute(ChatPageController.ASSISTANTS_ATTRIBUTE, assistants));
     }
 
     @Test
@@ -78,11 +85,23 @@ class ChatPageControllerTest {
 
     @Test
     void createChatRedirectsToNewChat() throws Exception {
-        given(chatFacade.createConversation()).willReturn(conversation(7L, "New chat"));
+        given(chatFacade.createConversation(null)).willReturn(conversation(7L, "New chat"));
 
         mockMvc.perform(post(ChatPageController.CHATS_PATH))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl(ChatPageController.CHATS_PATH + "/7"));
+    }
+
+    @Test
+    void createChatForwardsTheChosenAssistant() throws Exception {
+        given(chatFacade.createConversation("groceries"))
+                .willReturn(new ConversationDto(8L, "New chat", "groceries"));
+
+        mockMvc.perform(post(ChatPageController.CHATS_PATH).param("assistant", "groceries"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl(ChatPageController.CHATS_PATH + "/8"));
+
+        verify(chatFacade).createConversation("groceries");
     }
 
     @Test
@@ -95,6 +114,6 @@ class ChatPageControllerTest {
     }
 
     private ConversationDto conversation(Long id, String title) {
-        return new ConversationDto(id, title);
+        return new ConversationDto(id, title, "default");
     }
 }

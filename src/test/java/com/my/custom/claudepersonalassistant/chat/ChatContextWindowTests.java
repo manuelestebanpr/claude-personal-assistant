@@ -4,6 +4,7 @@ import java.util.List;
 
 import java.util.function.Consumer;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -13,7 +14,9 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.api.AssistantRegistry;
 import com.my.custom.claudepersonalassistant.assistant.api.VisionClient;
+import com.my.custom.claudepersonalassistant.assistant.dto.AssistantDescriptor;
 import com.my.custom.claudepersonalassistant.assistant.dto.AssistantRequest;
 import com.my.custom.claudepersonalassistant.assistant.dto.HistoryMessage;
 import com.my.custom.claudepersonalassistant.assistant.dto.HistoryRole;
@@ -23,6 +26,7 @@ import com.my.custom.claudepersonalassistant.mcp.api.McpToolGateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -41,8 +45,17 @@ class ChatContextWindowTests {
     @MockitoBean
     private McpToolGateway toolGateway;
 
+    @MockitoBean
+    private AssistantRegistry assistantRegistry;
+
     @Autowired
     private ChatFacade chatFacade;
+
+    @BeforeEach
+    void resolveEveryAssistantToTheDefault() {
+        given(assistantRegistry.resolve(any()))
+                .willReturn(new AssistantDescriptor("default", "Personal Assistant", ""));
+    }
 
     @Test
     void replaysOnlyTheConfiguredNumberOfTrailingMessages() {

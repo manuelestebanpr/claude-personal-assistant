@@ -35,9 +35,10 @@ class DefaultConversationService implements ConversationService {
     }
 
     @Override
-    public ConversationDto create() {
+    public ConversationDto create(String assistantId) {
         ConversationEntity entity = new ConversationEntity();
         entity.setTitle(properties.defaultTitle());
+        entity.setAssistantId(assistantId);
         entity.setCreatedAt(Instant.now());
         ConversationEntity saved = conversations.save(entity);
         eventPublisher.publishEvent(new ChatCreatedEvent(saved.getId(), saved.getTitle()));
@@ -82,6 +83,6 @@ class DefaultConversationService implements ConversationService {
     }
 
     private ConversationDto toDto(ConversationEntity entity) {
-        return new ConversationDto(entity.getId(), entity.getTitle());
+        return new ConversationDto(entity.getId(), entity.getTitle(), entity.getAssistantId());
     }
 }

@@ -1,6 +1,5 @@
 package com.my.custom.claudepersonalassistant.mcp.client;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -104,17 +103,13 @@ class SessionWireClient implements McpWireClient {
                         headers.set(HEADER_SESSION_ID, sessionId);
                     }
                 })
-                .body(Map.of("jsonrpc", McpProtocol.JSONRPC_VERSION, "method", METHOD_INITIALIZED))
+                .body(JsonRpcRequestBody.notification(METHOD_INITIALIZED))
                 .retrieve()
                 .toBodilessEntity();
     }
 
     private ResponseEntity<JsonRpcResponse> post(String method, Map<String, Object> params) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("jsonrpc", McpProtocol.JSONRPC_VERSION);
-        body.put("id", requestIds.incrementAndGet());
-        body.put("method", method);
-        body.put("params", params);
+        JsonRpcRequestBody body = JsonRpcRequestBody.of(requestIds.incrementAndGet(), method, params);
         return restClient.post()
                 .uri(url)
                 .contentType(MediaType.APPLICATION_JSON)

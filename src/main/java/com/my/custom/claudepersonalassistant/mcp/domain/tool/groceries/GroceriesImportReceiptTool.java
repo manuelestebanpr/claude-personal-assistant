@@ -77,8 +77,9 @@ class GroceriesImportReceiptTool implements McpTool {
     @Override
     public String description() {
         return "Reads a photographed supermarket receipt and stores every purchased item in the "
-                + "user's groceries, with its price, quantity and a category. Pass the id of an "
-                + "image the user attached to a message — the ids are noted on the message that "
+                + "user's groceries, with its price, quantity and a category. Call it when the "
+                + "user asks to add a photographed receipt to the groceries list. Pass the id of "
+                + "an image the user attached to a message — the ids are noted on the message that "
                 + "carried them. Use this instead of transcribing the receipt yourself: it reads "
                 + "the photo directly and stores the rows in one step.";
     }

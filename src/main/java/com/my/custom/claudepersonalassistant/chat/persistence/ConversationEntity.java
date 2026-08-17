@@ -26,6 +26,10 @@ public class ConversationEntity {
     @Column(nullable = false)
     private String title;
 
+    /** Nullable on purpose: rows created before assistants existed mean "the default assistant". */
+    @Column(name = "assistant_id", updatable = false)
+    private String assistantId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 }

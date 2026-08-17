@@ -8,6 +8,7 @@ import java.util.function.Consumer;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +16,9 @@ import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.api.AssistantRegistry;
 import com.my.custom.claudepersonalassistant.assistant.api.VisionClient;
+import com.my.custom.claudepersonalassistant.assistant.dto.AssistantDescriptor;
 import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
 import com.my.custom.claudepersonalassistant.chat.config.ChatMetrics;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
@@ -25,6 +28,7 @@ import com.my.custom.claudepersonalassistant.mcp.api.McpToolGateway;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willAnswer;
 
 /**
@@ -51,11 +55,20 @@ class ChatStreamDisconnectOutcomeTests {
     @MockitoBean
     private McpToolGateway toolGateway;
 
+    @MockitoBean
+    private AssistantRegistry assistantRegistry;
+
     @Autowired
     private ChatFacade chatFacade;
 
     @Autowired
     private MeterRegistry meterRegistry;
+
+    @BeforeEach
+    void resolveEveryAssistantToTheDefault() {
+        given(assistantRegistry.resolve(any()))
+                .willReturn(new AssistantDescriptor("default", "Personal Assistant", ""));
+    }
 
     @Test
     void countsATurnTheClientAbandonedOnTheDoneLineAsAFailure() {

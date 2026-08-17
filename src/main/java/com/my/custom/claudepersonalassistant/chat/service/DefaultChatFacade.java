@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.api.AssistantRegistry;
 import com.my.custom.claudepersonalassistant.assistant.dto.AssistantRequest;
 import com.my.custom.claudepersonalassistant.assistant.dto.HistoryMessage;
 import com.my.custom.claudepersonalassistant.assistant.dto.HistoryRole;
@@ -27,6 +28,7 @@ import com.my.custom.claudepersonalassistant.assistant.exception.AssistantExcept
 import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
 import com.my.custom.claudepersonalassistant.chat.api.ChatTurn;
 import com.my.custom.claudepersonalassistant.chat.config.ChatMetrics;
+import com.my.custom.claudepersonalassistant.chat.dto.AssistantDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationView;
@@ -74,6 +76,7 @@ class DefaultChatFacade implements ChatFacade {
     private final ConversationService conversationService;
     private final MessageService messageService;
     private final AssistantClient assistantClient;
+    private final AssistantRegistry assistantRegistry;
     private final McpToolGateway toolGateway;
     private final MeterRegistry meterRegistry;
     private final ObservationRegistry observationRegistry;
@@ -84,8 +87,19 @@ class DefaultChatFacade implements ChatFacade {
     }
 
     @Override
-    public ConversationDto createConversation() {
-        return timed(ChatMetrics.OPERATION_CREATE_CONVERSATION, conversationService::create);
+    public List<AssistantDto> listAssistants() {
+        return timed(ChatMetrics.OPERATION_LIST_ASSISTANTS, () -> assistantRegistry.list().stream()
+                .map(descriptor -> new AssistantDto(descriptor.id(), descriptor.displayName(),
+                        descriptor.description()))
+                .toList());
+    }
+
+    @Override
+    public ConversationDto createConversation(String assistantId) {
+        // Resolved before storing, so null and unknown ids become the default assistant's id and
+        // the database never holds an id the registry cannot answer for.
+        return timed(ChatMetrics.OPERATION_CREATE_CONVERSATION,
+                () -> conversationService.create(assistantRegistry.resolve(assistantId).id()));
     }
 
     @Override
@@ -115,7 +129,9 @@ class DefaultChatFacade implements ChatFacade {
             String outcome = ChatMetrics.OUTCOME_FAILURE;
             try {
                 AssistantRequest prepared = timed(ChatMetrics.OPERATION_PREPARE_TURN, () -> {
-                    conversationService.get(chatId); // 404 before the response body starts
+                    // Also the 404 check, before the response body starts — and the source of the
+                    // assistant the turn speaks as.
+                    ConversationDto conversation = conversationService.get(chatId);
                     List<ChatMessageDto> window = messageService.contextWindow(chatId); // read BEFORE saving
                     ChatMessageDto saved = messageService.append(chatId, MessageRole.USER, userText, images);
                     if (window.isEmpty()) {
@@ -131,7 +147,7 @@ class DefaultChatFacade implements ChatFacade {
                                     String.valueOf(saved.attachments().size()));
                     // The model gets the text plus a note of each image's id; storage kept the text
                     // the user actually typed.
-                    return new AssistantRequest(chatId, toHistory(window),
+                    return new AssistantRequest(chatId, conversation.assistantId(), toHistory(window),
                             AttachmentNotes.annotate(userText, saved.attachments()),
                             toImagePayloads(images), tools);
                 });
@@ -221,7 +237,8 @@ class DefaultChatFacade implements ChatFacade {
     }
 
     private ToolSpecification toSpecification(ToolDescriptor descriptor) {
-        return new ToolSpecification(descriptor.name(), descriptor.description(), descriptor.inputSchema());
+        return new ToolSpecification(descriptor.serverId(), descriptor.name(),
+                descriptor.description(), descriptor.inputSchema());
     }
 
     /**

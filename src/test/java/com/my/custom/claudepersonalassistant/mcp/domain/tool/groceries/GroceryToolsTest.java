@@ -163,6 +163,26 @@ class GroceryToolsTest {
         assertThat(deleteTool.execute(Map.of("ids", List.of(99)))).contains("No groceries");
     }
 
+    /**
+     * The descriptions are behavioural contracts, not prose: they are what keeps the model from
+     * adding or deleting groceries the user never asked about, and what makes it check the
+     * database before talking about the list. Pinned here so a rewording cannot silently drop a
+     * rule.
+     */
+    @Test
+    void describesEachToolWithItsExplicitTriggerRule() {
+        assertThat(addTool.description())
+                .contains("only when the user explicitly asks to add");
+        assertThat(addManyTool.description())
+                .contains("only when the user explicitly asks to add several");
+        assertThat(deleteTool.description())
+                .contains("only when the user explicitly asks to remove")
+                .contains("similar-sounding names, ask the user which one");
+        assertThat(listTool.description())
+                .contains("when the user wants to list or see")
+                .contains("verify against this listing");
+    }
+
     @Test
     void declaresDistinctSnakeCaseNamesAndClosedSchemas() {
         assertThat(List.of(addTool.name(), addManyTool.name(), listTool.name(), deleteTool.name()))

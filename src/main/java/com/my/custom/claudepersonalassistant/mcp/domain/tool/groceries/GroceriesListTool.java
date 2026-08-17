@@ -42,9 +42,11 @@ class GroceriesListTool implements McpTool {
     @Override
     public String description() {
         return "Lists the user's stored groceries with their ids, quantities and prices, and the "
-                + "total. Call it before answering anything about what the user already has, what "
-                + "they spent, or what is missing — and call it before groceries_delete, since the "
-                + "ids it prints are what a deletion is addressed by.";
+                + "total. Call it when the user wants to list or see the groceries, and before "
+                + "answering anything about what they already have, spent, or are missing — the "
+                + "database is the only source of truth, so verify against this listing instead of "
+                + "answering from memory or earlier turns. Also call it before groceries_delete, "
+                + "since the ids it prints are what a deletion is addressed by.";
     }
 
     @Override

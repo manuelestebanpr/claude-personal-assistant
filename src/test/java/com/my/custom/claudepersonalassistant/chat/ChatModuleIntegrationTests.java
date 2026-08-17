@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -14,7 +15,9 @@ import org.springframework.modulith.test.Scenario;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.api.AssistantRegistry;
 import com.my.custom.claudepersonalassistant.assistant.api.VisionClient;
+import com.my.custom.claudepersonalassistant.assistant.dto.AssistantDescriptor;
 import com.my.custom.claudepersonalassistant.assistant.dto.AssistantRequest;
 import com.my.custom.claudepersonalassistant.assistant.dto.ClassifiedError;
 import com.my.custom.claudepersonalassistant.assistant.dto.ErrorClassification;
@@ -23,6 +26,7 @@ import com.my.custom.claudepersonalassistant.assistant.dto.HistoryRole;
 import com.my.custom.claudepersonalassistant.assistant.dto.ToolSpecification;
 import com.my.custom.claudepersonalassistant.assistant.exception.AssistantException;
 import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
+import com.my.custom.claudepersonalassistant.chat.dto.AssistantDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationView;
@@ -64,8 +68,21 @@ class ChatModuleIntegrationTests {
     @MockitoBean
     private McpToolGateway toolGateway;
 
+    @MockitoBean
+    private AssistantRegistry assistantRegistry;
+
     @Autowired
     private ChatFacade chatFacade;
+
+    /** The real registry echoes known ids and falls back to the default; the stand-in does too. */
+    @BeforeEach
+    void resolveAssistantsLikeTheRealRegistry() {
+        given(assistantRegistry.resolve(any())).willAnswer(invocation -> {
+            String requested = invocation.getArgument(0);
+            String resolved = requested == null ? "default" : requested;
+            return new AssistantDescriptor(resolved, resolved, "");
+        });
+    }
 
     @Test
     void creatingAChatPublishesChatCreatedEvent(Scenario scenario) {
@@ -363,7 +380,7 @@ class ChatModuleIntegrationTests {
         ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
         verify(assistantClient).stream(requests.capture(), any());
         assertThat(requests.getValue().tools()).containsExactly(new ToolSpecification(
-                "get_current_hour", "Returns the time.",
+                "local", "get_current_hour", "Returns the time.",
                 Map.of("type", "object", "additionalProperties", false)));
     }
 
@@ -383,6 +400,37 @@ class ChatModuleIntegrationTests {
         ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
         verify(assistantClient).stream(requests.capture(), any());
         assertThat(requests.getValue().tools()).isEmpty();
+    }
+
+    @Test
+    void aConversationRemembersItsAssistantAndEveryTurnCarriesIt() {
+        willAnswer(invocation -> null).given(assistantClient).stream(any(), any());
+        ConversationDto chat = chatFacade.createConversation("groceries");
+        assertThat(chat.assistantId()).isEqualTo("groceries");
+        assertThat(chatFacade.openConversation(chat.id()).conversation().assistantId())
+                .isEqualTo("groceries");
+
+        chatFacade.prepareTurn(chat.id(), "what do I have?", List.of()).stream(event -> { });
+
+        ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
+        verify(assistantClient).stream(requests.capture(), any());
+        assertThat(requests.getValue().assistantId()).isEqualTo("groceries");
+    }
+
+    @Test
+    void aConversationCreatedWithoutAnAssistantUsesTheDefault() {
+        assertThat(chatFacade.createConversation().assistantId()).isEqualTo("default");
+    }
+
+    @Test
+    void listsAssistantsTranslatedIntoTheChatModulesOwnView() {
+        given(assistantRegistry.list()).willReturn(List.of(
+                new AssistantDescriptor("default", "Personal Assistant", "General-purpose."),
+                new AssistantDescriptor("groceries", "Groceries Assistant", "The grocery list.")));
+
+        assertThat(chatFacade.listAssistants()).containsExactly(
+                new AssistantDto("default", "Personal Assistant", "General-purpose."),
+                new AssistantDto("groceries", "Groceries Assistant", "The grocery list."));
     }
 
     @Test

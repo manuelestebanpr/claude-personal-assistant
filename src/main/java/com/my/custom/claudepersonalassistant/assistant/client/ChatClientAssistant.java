@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import reactor.core.publisher.Flux;
 import reactor.util.context.Context;
 
+import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -40,6 +41,8 @@ import com.my.custom.claudepersonalassistant.assistant.event.AssistantErrorEvent
 import com.my.custom.claudepersonalassistant.assistant.exception.AssistantException;
 import com.my.custom.claudepersonalassistant.assistant.logging.BlockType;
 import com.my.custom.claudepersonalassistant.assistant.logging.ContentBlockLogger;
+import com.my.custom.claudepersonalassistant.assistant.profile.AssistantProfile;
+import com.my.custom.claudepersonalassistant.assistant.profile.AssistantProfiles;
 
 /**
  * {@link AssistantClient} backed by Spring AI's {@link ChatClient}: replays the windowed
@@ -64,6 +67,7 @@ class ChatClientAssistant implements AssistantClient {
     private final ObservationRegistry observationRegistry;
     private final ToolExecutor toolExecutor;
     private final ObjectMapper objectMapper;
+    private final AssistantProfiles assistantProfiles;
 
     @Override
     public void stream(AssistantRequest request, Consumer<String> onDelta) {
@@ -74,10 +78,16 @@ class ChatClientAssistant implements AssistantClient {
         // the tool callbacks are invoked later on a Reactor scheduler thread with nothing on the
         // thread local, so the parent has to travel with them rather than be looked up again.
         Observation caller = observationRegistry.getCurrentObservation();
+        // The profile is what makes two assistants different calls over one client: its system
+        // prompt displaces any default, its model rides the per-call options, and its allowlist
+        // decides which of the caller's tools the model is offered at all.
+        AssistantProfile profile = assistantProfiles.profile(request.assistantId());
         Flux<ChatResponse> responses = chatClient.prompt()
+                .system(profile.systemPrompt())
                 .messages(toMessages(request.history()))
                 .user(userSpec -> withImages(userSpec, request))
-                .tools(toToolCallbacks(request.tools(), caller))
+                .tools(toToolCallbacks(allowedTools(request, profile), caller))
+                .options(AnthropicChatOptions.builder().model(profile.model()))
                 .stream()
                 .chatResponse()
                 .contextWrite(withCallerObservation(caller));
@@ -170,6 +180,12 @@ class ChatClientAssistant implements AssistantClient {
         return tools.stream()
                 .<ToolCallback>map(tool -> new ToolCallbackAdapter(tool, toolExecutor, objectMapper,
                         observationRegistry, caller))
+                .toList();
+    }
+
+    private List<ToolSpecification> allowedTools(AssistantRequest request, AssistantProfile profile) {
+        return request.tools().stream()
+                .filter(tool -> profile.allowsTool(tool.serverId(), tool.name()))
                 .toList();
     }
 

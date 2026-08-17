@@ -49,6 +49,13 @@ class GroceriesImportReceiptToolTest {
     private final GroceriesImportReceiptTool tool = new GroceriesImportReceiptTool(store,
             providerOf(imageAnalysis), JsonMapper.builder().build());
 
+    /** Same contract-pinning as the other groceries tools: the trigger rule lives in the text. */
+    @Test
+    void describesItselfAsTheReceiptToGroceriesPath() {
+        assertThat(tool.description())
+                .contains("when the user asks to add a photographed receipt to the groceries list");
+    }
+
     @Test
     void turnsAReceiptIntoStoredGroceries() {
         given(imageAnalysis.analyze(any())).willReturn(TWO_ITEMS);

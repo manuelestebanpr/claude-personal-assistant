@@ -43,9 +43,10 @@ class GroceriesAddManyTool implements McpTool {
 
     @Override
     public String description() {
-        return "Adds several items to the user's groceries in one call. Use it whenever more than "
-                + "one item is being recorded — a shopping list, a receipt read out loud — rather "
-                + "than calling groceries_add repeatedly. Either every item is stored or none is.";
+        return "Adds several items to the user's groceries in one call. Call it only when the user "
+                + "explicitly asks to add several items at once — a shopping list, a receipt read "
+                + "out loud — rather than calling groceries_add repeatedly, and never on your own "
+                + "initiative. Either every item is stored or none is.";
     }
 
     @Override

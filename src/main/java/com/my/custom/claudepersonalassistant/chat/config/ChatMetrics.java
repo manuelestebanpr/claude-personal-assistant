@@ -51,6 +51,7 @@ public final class ChatMetrics {
     public static final String KEY_STREAM_EVENTS = "chat.stream.events";
 
     public static final String OPERATION_LIST_CONVERSATIONS = "listConversations";
+    public static final String OPERATION_LIST_ASSISTANTS = "listAssistants";
     public static final String OPERATION_CREATE_CONVERSATION = "createConversation";
     public static final String OPERATION_OPEN_CONVERSATION = "openConversation";
     public static final String OPERATION_DELETE_CONVERSATION = "deleteConversation";

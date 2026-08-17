@@ -2,6 +2,7 @@ package com.my.custom.claudepersonalassistant.chat;
 
 import java.util.Collection;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,12 +13,16 @@ import org.springframework.modulith.test.Scenario;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.api.AssistantRegistry;
 import com.my.custom.claudepersonalassistant.assistant.api.VisionClient;
+import com.my.custom.claudepersonalassistant.assistant.dto.AssistantDescriptor;
 import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
 import com.my.custom.claudepersonalassistant.chat.event.ChatCreatedEvent;
 import com.my.custom.claudepersonalassistant.mcp.api.McpToolGateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 
 /**
  * Proves the atomicity half of Spring Modulith's event publication registry: an event
@@ -39,8 +44,17 @@ class ChatOutboxAtomicityTests {
     @MockitoBean
     private McpToolGateway toolGateway;
 
+    @MockitoBean
+    private AssistantRegistry assistantRegistry;
+
     @Autowired
     private ChatFacade chatFacade;
+
+    @BeforeEach
+    void resolveEveryAssistantToTheDefault() {
+        given(assistantRegistry.resolve(any()))
+                .willReturn(new AssistantDescriptor("default", "Personal Assistant", ""));
+    }
 
     @Autowired
     private EventPublicationRegistry registry;

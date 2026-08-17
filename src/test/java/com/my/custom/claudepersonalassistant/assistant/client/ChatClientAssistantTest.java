@@ -44,6 +44,7 @@ import com.my.custom.claudepersonalassistant.assistant.error.AssistantErrorPubli
 import com.my.custom.claudepersonalassistant.assistant.event.AssistantErrorEvent;
 import com.my.custom.claudepersonalassistant.assistant.exception.AssistantException;
 import com.my.custom.claudepersonalassistant.assistant.logging.ContentBlockLogger;
+import com.my.custom.claudepersonalassistant.assistant.profile.DefaultAssistantRegistry;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -80,13 +81,14 @@ class ChatClientAssistantTest {
         // The registry-taking builder overload, so the client's own observation is recorded here
         // rather than dropped into ObservationRegistry.NOOP — that observation is where Spring AI
         // reads its parent from, and where the nesting assertion below can see it.
+        // No defaultSystem on purpose: the system prompt is per-profile now, so the assertions
+        // below only pass if the per-call system(...) actually carries it.
         ChatClient chatClient = ChatClient.builder(chatModel, observationRegistry, null, null)
-                .defaultSystem(AssistantConstants.SYSTEM_PROMPT)
                 .build();
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
         assistant = new ChatClientAssistant(chatClient, new AnthropicErrorClassifier(), errorPublisher,
                 new ContentBlockLogger(meterRegistry, observationRegistry), meterRegistry, observationRegistry,
-                toolExecutor, JsonMapper.builder().build());
+                toolExecutor, JsonMapper.builder().build(), new DefaultAssistantRegistry());
     }
 
     @Test
@@ -189,6 +191,46 @@ class ChatClientAssistantTest {
 
         assertThat(deltas).containsExactly("It is 21:07.");
         verify(toolExecutor).execute("get_current_hour", Map.of());
+    }
+
+    /**
+     * The allowlist is the entire boundary between assistants — a groceries chat that could still
+     * reach gmail_search_messages would just be the default assistant with a different greeting.
+     */
+    @Test
+    void offersOnlyTheToolsTheRequestSAssistantAllows() {
+        given(chatModel.stream(any(Prompt.class))).willReturn(Flux.just(textChunk("ok")));
+        ToolSpecification allowed = new ToolSpecification("local", "groceries_list",
+                "Lists groceries.", Map.of("type", "object", "additionalProperties", false));
+        ToolSpecification filtered = new ToolSpecification("local", "get_current_hour",
+                "Returns the time.", Map.of("type", "object", "additionalProperties", false));
+        AssistantRequest request = new AssistantRequest(1L, "groceries", List.of(),
+                "what do I have?", List.of(allowed, filtered));
+
+        assistant.stream(request, delta -> { });
+
+        ArgumentCaptor<Prompt> prompts = ArgumentCaptor.forClass(Prompt.class);
+        verify(chatModel).stream(prompts.capture());
+        ToolCallingChatOptions options = (ToolCallingChatOptions) prompts.getValue().getOptions();
+        assertThat(options.getToolCallbacks())
+                .extracting(callback -> callback.getToolDefinition().name())
+                .containsExactly("groceries_list");
+    }
+
+    @Test
+    void appliesTheRequestSAssistantSystemPromptAndModel() {
+        given(chatModel.stream(any(Prompt.class))).willReturn(Flux.just(textChunk("ok")));
+        AssistantRequest request = new AssistantRequest(1L, "groceries", List.of(),
+                "what do I have?", List.of());
+
+        assistant.stream(request, delta -> { });
+
+        ArgumentCaptor<Prompt> prompts = ArgumentCaptor.forClass(Prompt.class);
+        verify(chatModel).stream(prompts.capture());
+        assertThat(prompts.getValue().getInstructions().getFirst()).isInstanceOf(SystemMessage.class);
+        assertThat(prompts.getValue().getInstructions().getFirst().getText())
+                .isEqualTo(AssistantConstants.GROCERIES_SYSTEM_PROMPT);
+        assertThat(prompts.getValue().getOptions().getModel()).isEqualTo("claude-haiku-4-5");
     }
 
     /**

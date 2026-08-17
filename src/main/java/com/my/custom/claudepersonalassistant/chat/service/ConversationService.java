@@ -12,7 +12,11 @@ interface ConversationService {
 
     List<ConversationDto> list();
 
-    ConversationDto create();
+    /**
+     * @param assistantId already resolved by the caller against the assistant registry — this
+     *                    layer stores what it is given
+     */
+    ConversationDto create(String assistantId);
 
     /**
      * @throws ChatNotFoundException when the conversation does not exist

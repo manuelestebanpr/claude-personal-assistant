@@ -46,9 +46,13 @@ class StatelessWireClientTest {
     @Test
     void sendsOneSelfDescribingRequestWithNoHandshake() {
         server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.jsonrpc").value(McpProtocol.JSONRPC_VERSION))
+                .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.method").value(McpProtocol.METHOD_TOOLS_LIST))
                 .andExpect(jsonPath("$.params._meta['io.modelcontextprotocol/protocolVersion']")
                         .value(McpProtocol.VERSION))
+                .andExpect(jsonPath("$.params._meta['io.modelcontextprotocol/clientInfo'].name")
+                        .value("claude-personal-assistant"))
                 .andExpect(header(McpProtocol.HEADER_PROTOCOL_VERSION, McpProtocol.VERSION))
                 .andExpect(header(McpProtocol.HEADER_METHOD, McpProtocol.METHOD_TOOLS_LIST))
                 .andRespond(withSuccess(TOOLS_RESULT, MediaType.APPLICATION_JSON));

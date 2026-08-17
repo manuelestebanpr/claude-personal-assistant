@@ -51,6 +51,8 @@ class SessionWireClientTest {
     @Test
     void opensASessionBeforeItsFirstRealRequest() {
         server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.jsonrpc").value(McpProtocol.JSONRPC_VERSION))
+                .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.method").value("initialize"))
                 .andExpect(jsonPath("$.params.protocolVersion").value(SessionWireClient.PROTOCOL_VERSION))
                 .andExpect(jsonPath("$.params.clientInfo.name").value("claude-personal-assistant"))
@@ -58,12 +60,17 @@ class SessionWireClientTest {
                         MediaType.APPLICATION_JSON)
                         .header(SessionWireClient.HEADER_SESSION_ID, "session-42"));
         server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.jsonrpc").value(McpProtocol.JSONRPC_VERSION))
                 .andExpect(jsonPath("$.method").value("notifications/initialized"))
-                // A notification carries no id; a server may reject one that does.
+                // A notification carries no id and no params; a server may reject one that does.
                 .andExpect(jsonPath("$.id").doesNotExist())
+                .andExpect(jsonPath("$.params").doesNotExist())
                 .andExpect(header(SessionWireClient.HEADER_SESSION_ID, "session-42"))
                 .andRespond(withStatus(HttpStatus.ACCEPTED));
         server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.jsonrpc").value(McpProtocol.JSONRPC_VERSION))
+                // Ids share one counter with the handshake, so the first real request is 2.
+                .andExpect(jsonPath("$.id").value(2))
                 .andExpect(jsonPath("$.method").value(McpProtocol.METHOD_TOOLS_LIST))
                 .andExpect(header(SessionWireClient.HEADER_SESSION_ID, "session-42"))
                 .andExpect(header(McpProtocol.HEADER_PROTOCOL_VERSION, SessionWireClient.PROTOCOL_VERSION))

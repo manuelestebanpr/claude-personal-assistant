@@ -42,9 +42,12 @@ class GroceriesDeleteTool implements McpTool {
 
     @Override
     public String description() {
-        return "Deletes groceries by id, permanently. Call groceries_list first to find the ids — "
-                + "there is no way to delete by name, on purpose. Pass every id to remove in one "
-                + "call. Ids that no longer exist are skipped rather than failing the call.";
+        return "Deletes groceries by id, permanently. Call it only when the user explicitly asks "
+                + "to remove a grocery from the list. Call groceries_list first to find the ids — "
+                + "there is no way to delete by name, on purpose — and if two stored groceries "
+                + "have similar-sounding names, ask the user which one they mean before deleting "
+                + "anything. Pass every id to remove in one call. Ids that no longer exist are "
+                + "skipped rather than failing the call.";
     }
 
     @Override

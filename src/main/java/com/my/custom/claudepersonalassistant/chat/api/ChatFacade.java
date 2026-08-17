@@ -3,6 +3,7 @@ package com.my.custom.claudepersonalassistant.chat.api;
 import java.util.List;
 import java.util.Map;
 
+import com.my.custom.claudepersonalassistant.chat.dto.AssistantDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationView;
@@ -18,7 +19,22 @@ public interface ChatFacade {
 
     List<ConversationDto> listConversations();
 
-    ConversationDto createConversation();
+    /**
+     * The assistants a new conversation can be addressed to, for the home page's picker cards.
+     */
+    List<AssistantDto> listAssistants();
+
+    /**
+     * Creates a conversation for one assistant. The id is resolved against the assistant registry
+     * before it is stored — {@code null} or an unknown id becomes the default assistant — so the
+     * database only ever holds ids that mean something.
+     */
+    ConversationDto createConversation(String assistantId);
+
+    /** A conversation with the default assistant. */
+    default ConversationDto createConversation() {
+        return createConversation(null);
+    }
 
     ConversationView openConversation(Long chatId);
 
