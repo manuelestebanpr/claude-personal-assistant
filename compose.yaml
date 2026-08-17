@@ -34,7 +34,7 @@ services:
       # with no credentials. Combined with spring.ai.chat.observations.log-prompt=true, anyone
       # who reaches :3000 reads full prompt and completion bodies out of Loki.
       GF_AUTH_ANONYMOUS_ENABLED: "true"
-      3506013536
+
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       # No LLM_SPEND_ALERT_USD here on purpose. The obvious design — pass the spend budget in as an
       # environment variable and reference it as $LLM_SPEND_ALERT_USD from the provisioned alert
