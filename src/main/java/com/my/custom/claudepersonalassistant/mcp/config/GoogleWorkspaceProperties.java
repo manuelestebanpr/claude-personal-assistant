@@ -8,7 +8,14 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *
  * <p>Single user, so there is no token store and no per-user consent: one refresh token obtained
  * once out of band lives in {@code .env} beside the Anthropic key, and every call exchanges it for
- * a short-lived access token.
+ * a short-lived access token via {@link
+ * com.my.custom.claudepersonalassistant.mcp.client.google.GoogleAccessTokens}.
+ *
+ * <p>The same credentials also authenticate an {@code mcp.servers[].google-auth=true} entry, which
+ * is how Google's own remote Gmail and Calendar MCP servers would be reached. Those servers are
+ * gated behind the Google Workspace Developer Preview Program and reject a consumer account with
+ * HTTP 403, so the local tools below are what actually runs — see the note in
+ * {@code application.properties}.
  *
  * @param enabled      gates the whole tool group. Off by default so the application boots — and the
  *                     test suite runs — with no Google credentials present at all

@@ -17,8 +17,10 @@ WORKDIR /app
 
 COPY --from=build /build/target/*.jar app.jar
 
-# File-based H2 database lives here; mount it to survive container replacement.
-VOLUME /app/data
+# No VOLUME /app/data here on purpose. It made every 'podman run' of this image without an
+# explicit mount create an anonymous volume: the database looked persistent, then disappeared the
+# first time anything pruned volumes. compose.yaml owns the bind mount, so the storage decision
+# stays where it is visible.
 
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

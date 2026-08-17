@@ -13,6 +13,8 @@ import com.my.custom.claudepersonalassistant.mcp.client.google.CalendarEvent;
 import com.my.custom.claudepersonalassistant.mcp.config.ConditionalOnGoogleWorkspace;
 import com.my.custom.claudepersonalassistant.mcp.config.GoogleWorkspaceProperties;
 import com.my.custom.claudepersonalassistant.mcp.domain.McpTool;
+import com.my.custom.claudepersonalassistant.mcp.domain.tool.ToolArguments;
+import com.my.custom.claudepersonalassistant.mcp.domain.tool.ToolSchema;
 
 /**
  * Lists what is on the calendar over the next few days.
@@ -87,7 +89,7 @@ class CalendarListEventsTool implements McpTool {
                 "%d event(s) in the next %d day(s):%n".formatted(events.size(), daysAhead));
         for (CalendarEvent event : events) {
             rendered.append("%n- %s%n".formatted(event.title()))
-                    .append("  When: %s%n".formatted(event.window()))
+                    .append("  When: %s%n".formatted(event.timeRange()))
                     .append("  id: %s%n".formatted(event.id()));
             if (event.location() != null && !event.location().isBlank()) {
                 rendered.append("  Where: %s%n".formatted(event.location()));

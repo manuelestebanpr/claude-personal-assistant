@@ -11,10 +11,12 @@ package com.my.custom.claudepersonalassistant.chat.dto;
  * @param name      human-readable label
  * @param url       endpoint it is reached at
  * @param protocol  MCP revision family the client uses for it
+ * @param local     whether this server is this application's own loopback endpoint, as opposed to
+ *                  a third-party/remote server
  * @param reachable whether it answered the last catalogue request
  * @param toolCount how many tools it exposed
  * @param detail    why it is unreachable, or {@code null}
  */
 public record McpServerDto(String id, String name, String url, String protocol,
-        boolean reachable, int toolCount, String detail) {
+        boolean local, boolean reachable, int toolCount, String detail) {
 }

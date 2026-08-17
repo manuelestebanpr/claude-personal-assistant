@@ -27,7 +27,7 @@ public record GmailMessage(String id, String threadId, String snippet, Payload p
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Body(String data, Integer size) {
+    public record Body(String data) {
     }
 
     /** Header lookup is case-insensitive: RFC 5322 field names are, and Gmail echoes them as sent. */

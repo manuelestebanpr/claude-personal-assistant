@@ -8,7 +8,20 @@
 </head>
 <body>
 <div class="layout">
-    <aside class="sidebar">
+    <!-- Mobile only: the sidebar collapses into a drawer, so its contents need a way back in. -->
+    <header class="topbar">
+        <button id="sidebar-toggle" class="sidebar-toggle" type="button"
+                aria-controls="sidebar" aria-expanded="false" aria-label="Show chats">
+            <span class="hamburger" aria-hidden="true"></span>
+        </button>
+        <span class="topbar-title"
+              th:text="${currentChat != null} ? ${currentChat.title()} : 'Claude Personal Assistant'">Claude Personal Assistant</span>
+    </header>
+
+    <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+
+    <aside id="sidebar" class="sidebar">
+        <a th:href="@{/}" class="home-link">&larr; Home</a>
         <form th:action="@{/chats}" method="post">
             <button type="submit" class="new-chat">+ New chat</button>
         </form>
@@ -31,23 +44,60 @@
             <th:block th:if="${currentChat != null}">
                 <div th:each="message : ${messages}"
                      class="bubble"
-                     th:classappend="${message.role().name() == 'USER'} ? 'user' : 'assistant'"
-                     th:text="${message.content()}">Message content</div>
+                     th:classappend="${message.role().name() == 'USER'} ? 'user' : 'assistant'">
+                    <!-- Images before the text, matching the composer, and fetched one by one from
+                         /attachments/{id} rather than inlined: an attachment never changes, so the
+                         browser caches it and a reload re-downloads nothing. -->
+                    <img th:each="attachment : ${message.attachments()}"
+                         class="bubble-image"
+                         th:src="@{/attachments/{id}(id=${attachment.id()})}"
+                         alt="Attached image"
+                         loading="lazy">
+                    <span th:if="${!#strings.isEmpty(message.content())}"
+                          th:text="${message.content()}">Message content</span>
+                </div>
             </th:block>
         </div>
         <form id="composer" class="composer" th:if="${currentChat != null}">
             <!-- Populated from /mcp-servers on "!" and from /tools on "!/". -->
             <div id="tool-palette" class="tool-palette" hidden>
-                <p class="tool-palette-title" id="palette-title">MCP servers</p>
+                <p class="tool-palette-title" id="tool-palette-title">MCP servers</p>
                 <ul id="tool-list" class="tool-list"></ul>
             </div>
-            <textarea id="message-input" class="message-input" rows="2"
-                      placeholder="Send a message, ! for MCP servers, !/ for their tools&hellip;"
-                      autofocus></textarea>
-            <button id="send-button" class="send-button" type="submit">Send</button>
+            <!-- Live camera, desktop only. Phones never open this: they hand off to the OS camera
+                 app through #camera-input below, which needs no secure context — and this app is
+                 reached over plain http on the tailnet, where getUserMedia does not exist. -->
+            <div id="camera-panel" class="camera-panel" hidden>
+                <video id="camera-preview" class="camera-preview" playsinline muted></video>
+                <div class="camera-actions">
+                    <button id="camera-shutter" class="camera-shutter" type="button">Take photo</button>
+                    <button id="camera-cancel" class="camera-cancel" type="button">Cancel</button>
+                </div>
+            </div>
+            <!-- Thumbnails of what is about to be sent. Populated by chat.js; empty and hidden
+                 until an image is picked, pasted, dropped or photographed. -->
+            <div id="attachments" class="attachments" hidden></div>
+            <div class="composer-row">
+                <button id="attach-button" class="attach-button" type="button"
+                        title="Attach a saved image" aria-label="Attach a saved image">+</button>
+                <input id="attach-input" class="attach-input" type="file"
+                       accept="image/*" multiple hidden>
+                <button id="camera-button" class="attach-button" type="button"
+                        title="Take a photo" aria-label="Take a photo">&#9673;</button>
+                <!-- capture="environment" is what makes iOS open the rear camera straight away
+                     instead of the pick-a-file sheet. Desktop Firefox ignores it, which is why the
+                     button routes there to the live panel above rather than to this input. -->
+                <input id="camera-input" class="attach-input" type="file"
+                       accept="image/*" capture="environment" hidden>
+                <textarea id="message-input" class="message-input" rows="2"
+                          placeholder="Send a message, ! for MCP servers, !/ for their tools&hellip;"
+                          autofocus></textarea>
+                <button id="send-button" class="send-button" type="submit">Send</button>
+            </div>
         </form>
     </main>
 </div>
+<script th:src="@{/js/sidebar.js}"></script>
 <script th:src="@{/js/chat.js}"></script>
 </body>
 </html>

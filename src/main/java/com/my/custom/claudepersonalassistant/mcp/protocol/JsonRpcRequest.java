@@ -15,7 +15,7 @@ public record JsonRpcRequest(String jsonrpc, Object id, String method, Map<Strin
     /** The {@code _meta} block every request in this revision must carry. */
     public Map<String, Object> meta() {
         return paramsOrEmpty().get(McpProtocol.PARAM_META) instanceof Map<?, ?> meta
-                ? castMeta(meta)
+                ? castToStringKeyedMap(meta)
                 : Map.of();
     }
 
@@ -29,12 +29,12 @@ public record JsonRpcRequest(String jsonrpc, Object id, String method, Map<Strin
 
     public Map<String, Object> toolArguments() {
         return paramsOrEmpty().get(McpProtocol.PARAM_ARGUMENTS) instanceof Map<?, ?> arguments
-                ? castMeta(arguments)
+                ? castToStringKeyedMap(arguments)
                 : Map.of();
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> castMeta(Map<?, ?> map) {
+    private Map<String, Object> castToStringKeyedMap(Map<?, ?> map) {
         return (Map<String, Object>) map;
     }
 }

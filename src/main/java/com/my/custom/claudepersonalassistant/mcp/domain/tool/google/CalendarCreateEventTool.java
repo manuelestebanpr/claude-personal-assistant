@@ -12,6 +12,8 @@ import com.my.custom.claudepersonalassistant.mcp.client.google.CalendarEvent;
 import com.my.custom.claudepersonalassistant.mcp.config.ConditionalOnGoogleWorkspace;
 import com.my.custom.claudepersonalassistant.mcp.domain.McpTool;
 import com.my.custom.claudepersonalassistant.mcp.domain.ToolExecutionException;
+import com.my.custom.claudepersonalassistant.mcp.domain.tool.ToolArguments;
+import com.my.custom.claudepersonalassistant.mcp.domain.tool.ToolSchema;
 
 /**
  * Books a new event on the primary calendar.

@@ -36,10 +36,17 @@ class ChatPageControllerTest {
     private ChatFacade chatFacade;
 
     @Test
-    void indexRendersConversationList() throws Exception {
+    void indexRendersHomeView() throws Exception {
+        mockMvc.perform(get(ChatPageController.ROOT_PATH))
+                .andExpect(status().isOk())
+                .andExpect(view().name(ChatPageController.HOME_VIEW));
+    }
+
+    @Test
+    void chatsRootRendersConversationListWithoutCurrentChat() throws Exception {
         given(chatFacade.listConversations()).willReturn(List.of(conversation(1L, "First chat")));
 
-        mockMvc.perform(get(ChatPageController.ROOT_PATH))
+        mockMvc.perform(get(ChatPageController.CHATS_PATH))
                 .andExpect(status().isOk())
                 .andExpect(view().name(ChatPageController.CHAT_VIEW))
                 .andExpect(model().attributeExists(ChatPageController.CONVERSATIONS_ATTRIBUTE))
@@ -79,15 +86,15 @@ class ChatPageControllerTest {
     }
 
     @Test
-    void deleteChatRedirectsToIndex() throws Exception {
+    void deleteChatRedirectsToChatsRoot() throws Exception {
         mockMvc.perform(post(ChatPageController.DELETE_CHAT_PATH, 5L))
                 .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl(ChatPageController.ROOT_PATH));
+                .andExpect(redirectedUrl(ChatPageController.CHATS_PATH));
 
         verify(chatFacade).deleteConversation(5L);
     }
 
     private ConversationDto conversation(Long id, String title) {
-        return new ConversationDto(id, title, Instant.now());
+        return new ConversationDto(id, title);
     }
 }

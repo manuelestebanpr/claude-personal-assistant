@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
 import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
+import com.my.custom.claudepersonalassistant.chat.dto.McpServerDto;
 import com.my.custom.claudepersonalassistant.chat.dto.MessageRole;
 import com.my.custom.claudepersonalassistant.chat.dto.ToolDto;
 import com.my.custom.claudepersonalassistant.chat.service.ChatNotFoundException;
@@ -48,6 +49,22 @@ class ToolControllerTest {
                 .andExpect(jsonPath("$[0].name").value("get_current_hour"))
                 .andExpect(jsonPath("$[0].title").value("Current hour"))
                 .andExpect(jsonPath("$[0].runnableAsIs").value(true));
+    }
+
+    @Test
+    void listsTheServersTheFacadeReportsIncludingLocalOrRemote() throws Exception {
+        given(chatFacade.listServers()).willReturn(List.of(
+                new McpServerDto("local", "Local", "http://localhost:8080/mcp", "STATELESS",
+                        true, true, 1, null),
+                new McpServerDto("gmail-mcp", "Gmail", "https://gmailmcp.googleapis.com/mcp/v1", "SESSION",
+                        false, false, 0, "MCP server unreachable")));
+
+        mockMvc.perform(get(ToolController.SERVERS_PATH))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("local"))
+                .andExpect(jsonPath("$[0].local").value(true))
+                .andExpect(jsonPath("$[1].id").value("gmail-mcp"))
+                .andExpect(jsonPath("$[1].local").value(false));
     }
 
     @Test

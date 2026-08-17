@@ -7,6 +7,8 @@ import org.springframework.stereotype.Component;
 import com.my.custom.claudepersonalassistant.mcp.client.google.GmailClient;
 import com.my.custom.claudepersonalassistant.mcp.config.ConditionalOnGoogleWorkspace;
 import com.my.custom.claudepersonalassistant.mcp.domain.McpTool;
+import com.my.custom.claudepersonalassistant.mcp.domain.tool.ToolArguments;
+import com.my.custom.claudepersonalassistant.mcp.domain.tool.ToolSchema;
 
 /**
  * Composes a draft. It is never sent.

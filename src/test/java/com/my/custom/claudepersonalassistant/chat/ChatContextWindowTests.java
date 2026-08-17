@@ -1,5 +1,7 @@
 package com.my.custom.claudepersonalassistant.chat;
 
+import java.util.List;
+
 import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Test;
@@ -11,6 +13,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.api.VisionClient;
 import com.my.custom.claudepersonalassistant.assistant.dto.AssistantRequest;
 import com.my.custom.claudepersonalassistant.assistant.dto.HistoryMessage;
 import com.my.custom.claudepersonalassistant.assistant.dto.HistoryRole;
@@ -31,6 +34,10 @@ class ChatContextWindowTests {
     @MockitoBean
     private AssistantClient assistantClient;
 
+    /** The chat module boots alone here, so every assistant port it depends on has to be stood in for. */
+    @MockitoBean
+    private VisionClient visionClient;
+
     @MockitoBean
     private McpToolGateway toolGateway;
 
@@ -46,9 +53,9 @@ class ChatContextWindowTests {
         }).given(assistantClient).stream(any(), any());
         ConversationDto chat = chatFacade.createConversation();
 
-        chatFacade.prepareTurn(chat.id(), "m1").stream(event -> { });
-        chatFacade.prepareTurn(chat.id(), "m2").stream(event -> { });
-        chatFacade.prepareTurn(chat.id(), "m3").stream(event -> { });
+        chatFacade.prepareTurn(chat.id(), "m1", List.of()).stream(event -> { });
+        chatFacade.prepareTurn(chat.id(), "m2", List.of()).stream(event -> { });
+        chatFacade.prepareTurn(chat.id(), "m3", List.of()).stream(event -> { });
 
         ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
         verify(assistantClient, times(3)).stream(requests.capture(), any());

@@ -3,10 +3,12 @@ package com.my.custom.claudepersonalassistant.assistant.config;
 /**
  * Meter names and tag keys emitted by the {@code assistant} module.
  *
- * <p>Every module names its boundary timer {@code app.module.operation} and distinguishes itself
- * with the {@code module} tag, so one dashboard panel covers them all. The constants are
- * duplicated per module rather than shared: a module that could import another module's metric
- * names would be depending on it.
+ * <p>A boundary timer is named {@code app.module.operation} and distinguishes its module with the
+ * {@code module} tag, so one dashboard panel covers every module that has one. Only {@code
+ * assistant} and {@code chat} do: {@code mcp} times {@code mcp.tool} instead and {@code audit}
+ * declares no timer at all, so the {@code module} tag currently carries two values, not four. The
+ * constants are duplicated per module rather than shared: a module that could import another
+ * module's metric names would be depending on it.
  */
 public final class AssistantMetrics {
 
@@ -21,6 +23,13 @@ public final class AssistantMetrics {
     public static final String OUTCOME_FAILURE = "failure";
 
     public static final String OPERATION_STREAM = "stream";
+
+    /**
+     * The one-shot image extraction, kept apart from {@link #OPERATION_STREAM} because the two have
+     * nothing comparable about them: a stream is paced by a reader, an extraction runs flat out.
+     * Averaging them together would hide both.
+     */
+    public static final String OPERATION_VISION = "vision";
 
     /** Anthropic token usage, split by direction. */
     public static final String TOKENS = "assistant.tokens";

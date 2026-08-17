@@ -19,6 +19,15 @@ import org.springframework.stereotype.Component;
  * logging untouched and avoids the static hand-off an XML-declared appender needs — Logback builds
  * appenders from XML long before there is a Spring context to take the {@code SdkLoggerProvider}
  * from. The trade-off is that records emitted before startup completes are not exported.
+ *
+ * <p>The {@code SdkLoggerProvider} it looks up comes from {@code
+ * OpenTelemetryLoggingAutoConfiguration}, gated on {@code @ConditionalOnEnabledOpenTelemetry} —
+ * that is {@code management.opentelemetry.enabled}, {@code matchIfMissing=true}. It is <em>not</em>
+ * gated on any of the export switches: turning {@code management.logging.export.otlp.enabled} off
+ * silences the exporter and leaves the provider, the processor and this appender fully in place.
+ * So the bean is present by default, and the only way to keep it out — which is what {@code
+ * src/test/resources/application.properties} does, so a test fork does not turn every log line into
+ * a batched {@code LogRecord} bound for a Noop exporter — is that one property.
  */
 @Component
 class OpenTelemetryLoggingBridge implements InitializingBean, DisposableBean {
@@ -36,7 +45,9 @@ class OpenTelemetryLoggingBridge implements InitializingBean, DisposableBean {
     @Override
     public void afterPropertiesSet() {
         SdkLoggerProvider loggerProvider = loggerProviders.getIfAvailable();
-        // Absent whenever OpenTelemetry is switched off, which is how every test context runs.
+        // Absent only when management.opentelemetry.enabled=false — the export switches leave it
+        // present — which is exactly what the test properties set, so no test fork attaches this
+        // appender to the JVM-global root logger.
         if (loggerProvider == null || !(LoggerFactory.getILoggerFactory() instanceof LoggerContext context)) {
             return;
         }

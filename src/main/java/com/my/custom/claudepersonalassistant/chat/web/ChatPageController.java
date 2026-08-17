@@ -24,6 +24,7 @@ public class ChatPageController {
     public static final String CHAT_PATH = "/chats/{chatId}";
     public static final String DELETE_CHAT_PATH = "/chats/{chatId}/delete";
 
+    public static final String HOME_VIEW = "home";
     public static final String CHAT_VIEW = "chat";
     public static final String CONVERSATIONS_ATTRIBUTE = "conversations";
     public static final String CURRENT_CHAT_ATTRIBUTE = "currentChat";
@@ -34,7 +35,12 @@ public class ChatPageController {
     private final ChatFacade chatFacade;
 
     @GetMapping(ROOT_PATH)
-    public String index(Model model) {
+    public String index() {
+        return HOME_VIEW;
+    }
+
+    @GetMapping(CHATS_PATH)
+    public String chatsRoot(Model model) {
         model.addAttribute(CONVERSATIONS_ATTRIBUTE, chatFacade.listConversations());
         return CHAT_VIEW;
     }
@@ -57,6 +63,6 @@ public class ChatPageController {
     @PostMapping(DELETE_CHAT_PATH)
     public String deleteChat(@PathVariable Long chatId) {
         chatFacade.deleteConversation(chatId);
-        return REDIRECT + ROOT_PATH;
+        return REDIRECT + CHATS_PATH;
     }
 }

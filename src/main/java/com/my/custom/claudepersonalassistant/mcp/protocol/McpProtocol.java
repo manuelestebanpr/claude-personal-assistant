@@ -39,7 +39,6 @@ public final class McpProtocol {
     public static final int ERROR_INVALID_REQUEST = -32600;
     public static final int ERROR_METHOD_NOT_FOUND = -32601;
     public static final int ERROR_INVALID_PARAMS = -32602;
-    public static final int ERROR_INTERNAL = -32603;
     /** Allocated by the specification for header values that disagree with the body. */
     public static final int ERROR_HEADER_MISMATCH = -32020;
 

@@ -18,6 +18,17 @@ import lombok.Setter;
 
 import com.my.custom.claudepersonalassistant.chat.dto.MessageRole;
 
+/**
+ * One persisted message. The storage side of the port whose other side is
+ * {@code assistant.dto.HistoryMessage} — and the two are deliberately not one type.
+ *
+ * <p>{@code HistoryMessage} is the model contract: a role and its text, nothing the model has no
+ * use for. This entity is the record: identity, the owning conversation, a timestamp and a
+ * {@link Lob} body. {@code DefaultChatFacade.toHistory()} maps between them, and that mapping is
+ * what keeps JPA out of the {@code assistant} module and Spring AI out of {@code chat}. Sharing one
+ * type across the boundary would look like a simplification and would couple the two modules'
+ * persistence and model concerns permanently; the duplication is the point.
+ */
 @Entity
 @Table(name = "chat_message",
         indexes = @Index(name = "idx_chat_message_conversation_id", columnList = "conversation_id"))

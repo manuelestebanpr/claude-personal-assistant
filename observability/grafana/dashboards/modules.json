@@ -1,6 +1,7 @@
 {
   "uid": "cpa-modules",
   "title": "Claude Personal Assistant — Modules",
+  "description": "What the four Spring Modulith modules do, measured by the meters they actually register: assistant (Anthropic streaming, tokens, errors), chat (conversation lifecycle), mcp (tool execution) and audit (the event-driven counters behind most tiles here). Read the top row knowing that only assistant and chat emit the app.module.operation boundary timer — mcp times mcp.tool instead and audit registers counters and no timer at all — so the \"module\" tag carries TWO values, not four. Two of the four modules being absent from the boundary panels is the design, not a broken exporter. JVM, GC and HTTP endpoint metrics are deliberately elsewhere (JVM & HTTP), and no log line or span appears here at all (Logs & Traces).",
   "tags": ["claude-personal-assistant", "modulith"],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -13,8 +14,9 @@
         "name": "job",
         "label": "Service",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": "label_values(app_module_operation_milliseconds_count, job)",
+        "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
+        "description": "Seeded from jvm_memory_used_bytes, not from a metric this dashboard actually charts. app_module_operation_milliseconds_count does not exist in Prometheus until some module boundary has recorded its first sample, so on a freshly started stack the variable resolved to nothing, every expression became job=~\"\" and all nine panels read \"No data\" — the dashboard looked broken at exactly the moment someone would open it to check the stack came up. jvm_memory_used_bytes is registered at startup and exported on the first step, so the variable is populated before any traffic.",
+        "query": "label_values(jvm_memory_used_bytes, job)",
         "current": { "text": "claude-personal-assistant", "value": "claude-personal-assistant" },
         "refresh": 1,
         "includeAll": false
@@ -30,8 +32,8 @@
     {
       "type": "timeseries",
       "title": "Operations per second by module",
-      "description": "Every Spring Modulith module times its own boundary operations under app.module.operation, tagged with module and operation.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "The assistant and chat modules time their boundary operations under app.module.operation, tagged with module and operation. mcp times mcp.tool instead and audit declares no timer, so the module tag carries two values, not four.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -45,7 +47,8 @@
     {
       "type": "timeseries",
       "title": "Operation latency p95",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "The same app.module.operation timer as the panel beside it, read as a quantile — so again two modules, assistant and chat, not four. Buckets exist only because management.metrics.distribution.percentiles-histogram asks for them; without that line the timer publishes a single +Inf bucket and this quantile is not empty, it is meaningless. An assistant line here is dominated by how long Anthropic took to finish the answer, which is why it is orders of magnitude above chat.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "ms", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -59,7 +62,8 @@
     {
       "type": "timeseries",
       "title": "Failed operations per second",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "The same timer's count filtered to outcome=failure: a boundary operation that threw. This includes a failure that happened after streaming had already begun — the HTTP status was committed long before, so the client received an in-band NDJSON ERROR line and the request still counts as a 200 on the JVM & HTTP dashboard's \"Server error ratio\" tile. This panel is therefore the honest count of broken turns; \"Stream errors by classification\" below breaks the assistant's share of them into RETRYABLE and TERMINAL.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 20 } }, "overrides": [] },
       "targets": [
@@ -72,14 +76,14 @@
     },
     {
       "type": "row",
-      "title": "assistant",
+      "title": "assistant — Anthropic streaming failures and token spend",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }
     },
     {
       "type": "timeseries",
       "title": "Stream errors by classification",
       "description": "Published as AssistantErrorEvent and counted by the audit module. RETRYABLE means rate limits or overload; TERMINAL means the request will fail again unchanged.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
       "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 20 } }, "overrides": [] },
       "targets": [
@@ -93,7 +97,8 @@
     {
       "type": "timeseries",
       "title": "Anthropic token usage per second",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Anthropic's own prompt and completion token counts, tagged type=prompt / type=completion. Usage is only known once the stream finishes, so this is incremented in onComplete() and nowhere else: a turn that dies mid-answer spends real tokens upstream and adds nothing here — a flat line during visible traffic means turns are failing, not that they are cheap. Cross-check against \"Stream errors by classification\" beside it.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -106,40 +111,41 @@
     },
     {
       "type": "row",
-      "title": "chat",
+      "title": "chat — conversation lifecycle over the selected range",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }
     },
     {
       "type": "stat",
-      "title": "Chats created",
-      "description": "`or vector(0)` so a counter that has not been incremented yet reads 0 rather than \"No data\" — a counter only exists in Prometheus once it has fired at least once.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "title": "Chats created in the selected range",
+      "description": "increase() over $__range, not the raw counter. The raw counter is per-JVM and resets to 0 on every restart, so on a 1h dashboard a rebuild made this tile drop to zero while H2 still held every chat — it read as data loss when nothing was lost. increase() answers the question the tile is actually asking (how many were created in the window shown) and is restart-correct because Prometheus compensates for counter resets. `or vector(0)` stays: the counter does not exist in Prometheus at all until it fires once, and \"No data\" is the wrong way to display zero.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 5, "w": 12, "x": 0, "y": 27 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "sum(assistant_chats_created_total{job=~\"$job\"}) or vector(0)" }
+        { "refId": "A", "expr": "sum(increase(assistant_chats_created_total{job=~\"$job\"}[$__range])) or vector(0)" }
       ]
     },
     {
       "type": "stat",
-      "title": "Chats deleted",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "title": "Chats deleted in the selected range",
+      "description": "Same reasoning as the tile beside it: a per-JVM counter read raw reports the lifetime of the current process, not the dashboard's time range.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 5, "w": 12, "x": 12, "y": 27 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "sum(assistant_chats_deleted_total{job=~\"$job\"}) or vector(0)" }
+        { "refId": "A", "expr": "sum(increase(assistant_chats_deleted_total{job=~\"$job\"}[$__range])) or vector(0)" }
       ]
     },
     {
       "type": "row",
-      "title": "mcp",
+      "title": "mcp — tool calls counted from both sides, plus the ones nothing could run",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 }
     },
     {
       "type": "timeseries",
-      "title": "Tool invocations per second",
-      "description": "Counted inside the mcp module for every tools/call, whether it arrived from the chat facade over loopback or from an external MCP client.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "title": "Tool invocations per second (mcp, what the tool server executed)",
+      "description": "The synchronous count, incremented inside the mcp module itself for every tools/call it ran — whether the call arrived from the chat facade over loopback or from an external MCP client. Its twin below, \"Tool invocations per second (audit, what the assistant did)\", counts the same calls from the other side and answers a different question. The two agree today only because our own /mcp runs in this process; the module boundaries already allow mcp to be lifted into its own service, and after that an external client's calls would appear on this panel and never on the audit one.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
       "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -152,8 +158,9 @@
     },
     {
       "type": "timeseries",
-      "title": "Tool execution p95",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "title": "Tool execution latency p95",
+      "description": "Milliseconds spent inside the tool itself, from the mcp.tool timer the mcp module owns. This is the module's own boundary measurement — mcp does not emit app.module.operation, which is why it is missing from the two latency panels at the top of this dashboard. A Gmail or Calendar tool is dominated by the outbound Google REST call, so it sits far above the in-process tools; a rejected call never reaches Timer.start() and contributes nothing at all.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
       "fieldConfig": { "defaults": { "unit": "ms", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -161,6 +168,36 @@
           "refId": "A",
           "legendFormat": "{{tool}}",
           "expr": "histogram_quantile(0.95, sum by (le, tool) (rate(mcp_tool_milliseconds_bucket{job=~\"$job\"}[$__rate_interval])))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool invocations per second (audit, what the assistant did)",
+      "description": "The event-driven count. McpToolAuditor consumes ToolInvokedEvent and records assistant.tools.invoked, tagged with the same tool and outcome, so this panel reports the tool calls this application asked for rather than the calls a tool server executed. Compare it with \"Tool invocations per second (mcp, what the tool server executed)\" above: the two track each other today because our own /mcp is in-process over loopback, and they would diverge the moment mcp became a separate service, which the module boundaries already permit — an external client's calls would raise the mcp panel alone. They would also diverge on a delivery failure: @ApplicationModuleListener is AFTER_COMMIT, so a publish with no transaction in scope is dropped silently — which is why ToolEventPublisher wraps it in a REQUIRES_NEW template, and why this panel going flat while the mcp one keeps climbing is the visible symptom of that wrapper being removed. A gap between the two is the signal, not noise.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{tool}} ({{outcome}})",
+          "expr": "sum by (tool, outcome) (rate(assistant_tools_invoked_total{job=~\"$job\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Rejected tool calls per second",
+      "description": "Sits in the mcp row but charts an audit-module meter: assistant.tools.rejected, incremented by McpToolAuditor from ToolInvocationRejectedEvent. It is kept here because it is only readable next to the two invocation panels, not because mcp registers it. The only meter that records the model calling a tool that does not exist — a renamed, removed or hallucinated name. DefaultToolRegistry publishes the event and throws BEFORE Timer.start(), so mcp_tool_invocations_total never increments for a rejection: on the panels beside this one the tool simply stops appearing, with nothing else on the dashboard to say why. Any sustained line here means the catalogue the model was given and the catalogue the registry holds have diverged.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 20 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{tool}}",
+          "expr": "sum by (tool) (rate(assistant_tools_rejected_total{job=~\"$job\"}[$__rate_interval]))"
         }
       ]
     }

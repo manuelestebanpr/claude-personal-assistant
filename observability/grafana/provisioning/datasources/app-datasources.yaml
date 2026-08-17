@@ -1,0 +1,35 @@
+# Mounted alongside the otel-lgtm image's own grafana-datasources.yaml. Grafana merges every
+# provider file it finds in this directory, so this adds a datasource instead of replacing one.
+#
+# Why it exists: the image's Prometheus datasource sets jsonData.timeInterval: 60s. Grafana feeds
+# that into $__interval (clamped to a 60s floor) and $__rate_interval
+# (= max($__interval + scrape interval, 4 * scrape interval) -> at least 4 minutes here), so every
+# rate() and histogram_quantile() panel renders at 60s resolution over a >= 4-minute averaging
+# window. observability.properties deliberately exports every 15s, so four out of five exported
+# points are averaged away: a burst shorter than four minutes flattens into the baseline and the
+# dashboard reads "the app is idle" while the data to prove otherwise is already in Prometheus.
+#
+# Same server, same exemplars, honest resolution. Not marked isDefault: the image's `prometheus`
+# uid stays the default so the dashboards it ships keep working untouched; only this project's
+# dashboards point at `prometheus-15s`.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus (app, 15s)
+    type: prometheus
+    uid: prometheus-15s
+    url: http://127.0.0.1:9090
+    editable: true
+    jsonData:
+      # Matches management.otlp.metrics.export.step in observability.properties. Raising it above
+      # the real export interval re-introduces the smoothing; lowering it below makes
+      # $__rate_interval span fewer than the two samples rate() needs and panels go gappy.
+      timeInterval: 15s
+      # Copied verbatim from the image's datasource: without it the metric -> trace pivot (clicking
+      # an exemplar dot to open the span in Tempo) silently disappears for every panel repointed
+      # here. The $$ is Grafana provisioning's escape for a literal $ — a single one would be
+      # expanded as an environment variable at load time and resolve to empty.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+          urlDisplayLabel: "Trace: $${__value.raw}"

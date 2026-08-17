@@ -9,6 +9,8 @@ import com.my.custom.claudepersonalassistant.mcp.client.google.GmailMessage;
 import com.my.custom.claudepersonalassistant.mcp.config.ConditionalOnGoogleWorkspace;
 import com.my.custom.claudepersonalassistant.mcp.config.GoogleWorkspaceProperties;
 import com.my.custom.claudepersonalassistant.mcp.domain.McpTool;
+import com.my.custom.claudepersonalassistant.mcp.domain.tool.ToolArguments;
+import com.my.custom.claudepersonalassistant.mcp.domain.tool.ToolSchema;
 
 /**
  * Reads one message in full.

@@ -10,6 +10,8 @@ import com.my.custom.claudepersonalassistant.mcp.client.google.GmailMessage;
 import com.my.custom.claudepersonalassistant.mcp.config.ConditionalOnGoogleWorkspace;
 import com.my.custom.claudepersonalassistant.mcp.config.GoogleWorkspaceProperties;
 import com.my.custom.claudepersonalassistant.mcp.domain.McpTool;
+import com.my.custom.claudepersonalassistant.mcp.domain.tool.ToolArguments;
+import com.my.custom.claudepersonalassistant.mcp.domain.tool.ToolSchema;
 
 /**
  * Finds messages in the user's mailbox.
@@ -20,7 +22,7 @@ import com.my.custom.claudepersonalassistant.mcp.domain.McpTool;
  */
 @Component
 @ConditionalOnGoogleWorkspace
-class GmailSearchTool implements McpTool {
+class GmailSearchMessagesTool implements McpTool {
 
     static final String NAME = "gmail_search_messages";
 
@@ -29,7 +31,7 @@ class GmailSearchTool implements McpTool {
     private final GmailClient gmail;
     private final GoogleWorkspaceProperties.Limits limits;
 
-    GmailSearchTool(GmailClient gmailClient, GoogleWorkspaceProperties properties) {
+    GmailSearchMessagesTool(GmailClient gmailClient, GoogleWorkspaceProperties properties) {
         this.gmail = gmailClient;
         this.limits = properties.limits();
     }

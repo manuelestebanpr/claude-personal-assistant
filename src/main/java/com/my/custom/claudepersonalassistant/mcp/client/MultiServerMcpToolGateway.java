@@ -19,6 +19,7 @@ import com.my.custom.claudepersonalassistant.mcp.api.ToolDescriptor;
 import com.my.custom.claudepersonalassistant.mcp.api.ToolInvocation;
 import com.my.custom.claudepersonalassistant.mcp.api.ToolResult;
 import com.my.custom.claudepersonalassistant.mcp.api.UnknownMcpServerException;
+import com.my.custom.claudepersonalassistant.mcp.domain.ToolExecutionException;
 
 /**
  * Fans the gateway out across every configured server.
@@ -27,6 +28,19 @@ import com.my.custom.claudepersonalassistant.mcp.api.UnknownMcpServerException;
  */
 @Component
 class MultiServerMcpToolGateway implements McpToolGateway {
+
+    static final String DUPLICATE_TOOL_MESSAGE =
+            "Duplicate tool name; keeping the first server's and dropping this one";
+    /**
+     * Deliberately distinct from the message the chat layer logs when the whole catalogue is
+     * unavailable: one server dropping out and every server dropping out are different incidents,
+     * and a shared body would make them one line in Loki.
+     */
+    static final String UNREACHABLE_SERVER_MESSAGE = "Skipping unreachable MCP server";
+
+    static final String KEY_SERVER = "server";
+    static final String KEY_TOOL = "tool";
+    static final String KEY_DETAIL = "detail";
 
     private static final Logger log = LoggerFactory.getLogger(MultiServerMcpToolGateway.class);
 
@@ -49,31 +63,40 @@ class MultiServerMcpToolGateway implements McpToolGateway {
      */
     @Override
     public List<ToolDescriptor> listTools() {
-        List<ToolDescriptor> aggregated = new ArrayList<>();
-        Set<String> claimed = new LinkedHashSet<>();
+        List<ToolDescriptor> aggregatedTools = new ArrayList<>();
+        Set<String> claimedToolNames = new LinkedHashSet<>();
         for (McpServerConnection connection : connections.values()) {
             try {
                 for (ToolDescriptor tool : connection.listTools()) {
-                    if (claimed.add(tool.name())) {
-                        aggregated.add(tool);
+                    if (claimedToolNames.add(tool.name())) {
+                        aggregatedTools.add(tool);
                     }
                     else {
                         // The model addresses a tool by bare name, so it could not express which
                         // server it meant. First server configured wins.
                         log.atWarn()
-                                .addKeyValue("tool", tool.name())
-                                .addKeyValue("server", connection.id())
-                                .log("Duplicate tool name; keeping the first server's and dropping this one");
+                                .addKeyValue(KEY_TOOL, tool.name())
+                                .addKeyValue(KEY_SERVER, connection.id())
+                                .log(DUPLICATE_TOOL_MESSAGE);
                     }
                 }
             }
-            catch (McpClientException unreachable) {
+            catch (McpClientException | ToolExecutionException unreachable) {
+                // ToolExecutionException covers a google-auth server's token-refresh interceptor,
+                // which fires on every outgoing request including this discovery call — treated
+                // identically to an unreachable server so it doesn't cost the model every other
+                // server's tools.
+                // The reason travels as a key-value, not in the body: interpolating it would mint a
+                // distinct log body per failure text and leave nothing for LogQL to group on. It is
+                // truncated on the way there — an unbounded key-value becomes unbounded structured
+                // metadata, which Loki answers by rejecting the whole entry.
                 log.atWarn()
-                        .addKeyValue("server", connection.id())
-                        .log("Tool catalogue unavailable: {}", unreachable.getMessage());
+                        .addKeyValue(KEY_SERVER, connection.id())
+                        .addKeyValue(KEY_DETAIL, FailureDetail.of(unreachable))
+                        .log(UNREACHABLE_SERVER_MESSAGE);
             }
         }
-        return List.copyOf(aggregated);
+        return List.copyOf(aggregatedTools);
     }
 
     @Override

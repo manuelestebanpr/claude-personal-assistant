@@ -22,6 +22,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class CalendarToolsTest {
@@ -38,6 +39,7 @@ class CalendarToolsTest {
     private final CalendarListEventsTool list = new CalendarListEventsTool(calendar, properties, clock);
     private final CalendarCreateEventTool create = new CalendarCreateEventTool(calendar, clock);
     private final CalendarUpdateEventTool update = new CalendarUpdateEventTool(calendar, clock);
+    private final CalendarDeleteEventTool delete = new CalendarDeleteEventTool(calendar);
 
     /** "Now" comes from the same clock as get_current_hour — the model cannot supply one. */
     @Test
@@ -53,10 +55,10 @@ class CalendarToolsTest {
     @Test
     void listRendersTitleWindowAndIdSoAnEventCanBeUpdated() {
         when(calendar.events(any(), any(), anyInt())).thenReturn(List.of(new CalendarEvent(
-                "e1", "Stand-up", null, "Room 2", null,
-                new CalendarEvent.EventTime("2026-08-14T09:00:00-05:00", null, "America/Bogota"),
-                new CalendarEvent.EventTime("2026-08-14T09:15:00-05:00", null, "America/Bogota"),
-                List.of(new CalendarEvent.Attendee("alice@example.com", "accepted")))));
+                "e1", "Stand-up", null, "Room 2",
+                new CalendarEvent.EventTime("2026-08-14T09:00:00-05:00", null),
+                new CalendarEvent.EventTime("2026-08-14T09:15:00-05:00", null),
+                List.of(new CalendarEvent.Attendee("alice@example.com")))));
 
         String rendered = list.execute(Map.of());
 
@@ -71,9 +73,9 @@ class CalendarToolsTest {
     @Test
     void listHandlesAnAllDayEventWithNoTimeOfDay() {
         when(calendar.events(any(), any(), anyInt())).thenReturn(List.of(new CalendarEvent(
-                "e2", "Public holiday", null, null, null,
-                new CalendarEvent.EventTime(null, "2026-08-17", null),
-                new CalendarEvent.EventTime(null, "2026-08-18", null), null)));
+                "e2", "Public holiday", null, null,
+                new CalendarEvent.EventTime(null, "2026-08-17"),
+                new CalendarEvent.EventTime(null, "2026-08-18"), null)));
 
         assertThat(list.execute(Map.of())).contains("2026-08-17 (all day)");
     }
@@ -138,6 +140,24 @@ class CalendarToolsTest {
         assertThat(draft.getValue().end()).isNull();
     }
 
+    /** Deletion is irreversible, so the id has to come from the caller and never be inferred. */
+    @Test
+    void deleteRemovesExactlyTheEventItWasGivenAndNamesItBack() {
+        String rendered = delete.execute(Map.of("event_id", "e1"));
+
+        verify(calendar).delete("e1");
+        assertThat(rendered).contains("e1");
+    }
+
+    @Test
+    void deleteRefusesToGuessWhichEventToRemove() {
+        assertThatThrownBy(() -> delete.execute(Map.of()))
+                .isInstanceOf(ToolExecutionException.class)
+                .hasMessageContaining("event_id");
+
+        verifyNoInteractions(calendar);
+    }
+
     /**
      * The form is rendered in schema order, and a model prompt cache keys on the serialised tool
      * list — so a property order that reshuffles between restarts is a real cost, not a cosmetic
@@ -161,14 +181,16 @@ class CalendarToolsTest {
         assertThat(list.name()).isEqualTo("calendar_list_events");
         assertThat(create.name()).isEqualTo("calendar_create_event");
         assertThat(update.name()).isEqualTo("calendar_update_event");
+        assertThat(delete.name()).isEqualTo("calendar_delete_event");
         assertThat(create.inputSchema()).containsEntry("required", List.of("summary", "start", "end"));
         assertThat(update.inputSchema()).containsEntry("required", List.of("event_id"));
+        assertThat(delete.inputSchema()).containsEntry("required", List.of("event_id"));
         assertThat(list.inputSchema()).containsEntry("additionalProperties", false);
     }
 
     private CalendarEvent event(String id, String summary) {
-        return new CalendarEvent(id, summary, null, null, null,
-                new CalendarEvent.EventTime("2026-08-14T15:00:00-05:00", null, ZONE.getId()),
-                new CalendarEvent.EventTime("2026-08-14T16:00:00-05:00", null, ZONE.getId()), null);
+        return new CalendarEvent(id, summary, null, null,
+                new CalendarEvent.EventTime("2026-08-14T15:00:00-05:00", null),
+                new CalendarEvent.EventTime("2026-08-14T16:00:00-05:00", null), null);
     }
 }

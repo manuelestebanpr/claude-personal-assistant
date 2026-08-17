@@ -54,7 +54,9 @@ class StatelessWireClient implements McpWireClient {
             return request.body(body).retrieve().body(JsonRpcResponse.class);
         }
         catch (RestClientException transportFailure) {
-            throw new McpClientException("MCP request '%s' failed".formatted(method), transportFailure);
+            throw new McpClientException(
+                    "MCP request '%s' failed: %s".formatted(method, transportFailure.getMessage()),
+                    transportFailure);
         }
     }
 

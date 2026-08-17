@@ -36,17 +36,27 @@ class GoogleWorkspaceToolRegistrationTests {
     /**
      * Order is asserted, not just membership: clients cache {@code tools/list} and model prompt
      * caches key on its bytes, so a list that reshuffles between restarts is a silent cost.
+     *
+     * <p>The whole registry, not only the Google half — a new tool group anywhere in the module
+     * lands in this list, which is deliberate: this is the one place the complete published surface
+     * is written down.
      */
     @Test
     void publishesEveryGoogleToolInADeterministicOrder() {
         assertThat(toolRegistry.tools()).extracting(McpTool::name).containsExactly(
                 "calendar_create_event",
+                "calendar_delete_event",
                 "calendar_list_events",
                 "calendar_update_event",
                 "get_current_hour",
                 "gmail_create_draft",
                 "gmail_get_message",
-                "gmail_search_messages");
+                "gmail_search_messages",
+                "groceries_add",
+                "groceries_add_many",
+                "groceries_delete",
+                "groceries_import_receipt",
+                "groceries_list");
     }
 
     /**

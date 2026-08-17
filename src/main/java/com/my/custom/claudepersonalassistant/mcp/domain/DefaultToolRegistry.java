@@ -47,17 +47,17 @@ class DefaultToolRegistry implements ToolRegistry {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             ToolResult result = ToolResult.ok(tool.execute(arguments));
-            record(sample, toolName, McpMetrics.OUTCOME_SUCCESS);
+            recordToolMetrics(sample, toolName, McpMetrics.OUTCOME_SUCCESS);
             eventPublisher.publish(new ToolInvokedEvent(toolName, false));
             return result;
         } catch (ToolExecutionException failure) {
-            record(sample, toolName, McpMetrics.OUTCOME_FAILURE);
+            recordToolMetrics(sample, toolName, McpMetrics.OUTCOME_FAILURE);
             eventPublisher.publish(new ToolInvokedEvent(toolName, true));
             return ToolResult.failed(failure.getMessage());
         }
     }
 
-    private void record(Timer.Sample sample, String toolName, String outcome) {
+    private void recordToolMetrics(Timer.Sample sample, String toolName, String outcome) {
         sample.stop(Timer.builder(McpMetrics.TOOL_DURATION)
                 .tag(McpMetrics.TAG_TOOL, toolName)
                 .tag(McpMetrics.TAG_OUTCOME, outcome)

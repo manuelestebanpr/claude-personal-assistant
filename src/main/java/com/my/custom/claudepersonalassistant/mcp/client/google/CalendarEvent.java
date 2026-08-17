@@ -19,13 +19,12 @@ public record CalendarEvent(
         String summary,
         String description,
         String location,
-        String htmlLink,
         EventTime start,
         EventTime end,
         List<Attendee> attendees) {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record EventTime(String dateTime, String date, String timeZone) {
+    public record EventTime(String dateTime, String date) {
 
         /** The instant if timed, the day if all-day. */
         public String display() {
@@ -37,14 +36,14 @@ public record CalendarEvent(
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Attendee(String email, String responseStatus) {
+    public record Attendee(String email) {
     }
 
     public String title() {
         return StringUtils.hasText(summary) ? summary : "(no title)";
     }
 
-    public String window() {
+    public String timeRange() {
         String from = start == null ? "unscheduled" : start.display();
         String to = end == null ? "unscheduled" : end.display();
         return from + " → " + to;

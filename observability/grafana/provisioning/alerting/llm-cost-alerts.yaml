@@ -1,0 +1,128 @@
+# Provisioned Grafana alerting for LLM spend. A file in the repo rather than a rule clicked into
+# the UI, for the same reason the dashboards are: the otel-lgtm container is ephemeral and anything
+# created through the UI dies with it.
+#
+# Mounted at /otel-lgtm/grafana/conf/provisioning/alerting/ by BOTH compose.yaml and
+# TestcontainersConfiguration. Grafana merges every file it finds in that directory, so this adds
+# rules rather than replacing the image's own.
+#
+# THE BUDGET IS THE ONE NUMBER TO EDIT IN THIS FILE — the `params: [10]` line near the bottom.
+#
+# It is a literal and not an environment variable, and that is a measured decision rather than a
+# shortcut. Grafana expands $VARIABLE in provisioning files for datasources, dashboards and
+# plugins, but NOT for alerting: with LLM_SPEND_ALERT_USD=42 set on the container and
+# `params: [$LLM_SPEND_ALERT_USD]` in this file, grafana/otel-lgtm:latest (Grafana v13.1.1) came up
+# healthy and GET /api/v1/provisioning/alert-rules reported the threshold as the literal string
+# "$LLM_SPEND_ALERT_USD". No expansion, no error, no warning — a budget that looks configured and
+# is not. A literal here is worse ergonomics and better honesty.
+#
+# 'for: 15m' is what stops a single expensive burst from paging: the 24h spend has to stay over
+# budget for a continuous 15 minutes before the rule leaves Pending and fires.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: llm-cost
+    # Deliberately not "LLM cost": Grafana creates a folder with this name, and a folder sharing a
+    # title with the cpa-llm-cost dashboard makes the search results read as two dashboards.
+    folder: LLM cost alerts
+    # Matches the recording-rule interval; evaluating faster than the recorded series is refreshed
+    # would only re-read the same value.
+    interval: 1m
+    rules:
+      - uid: cpa-llm-spend-over-budget
+        title: LLM spend over budget (24h)
+        condition: C
+        # The 15-minute grace period asked for: a burst that clears within it never notifies.
+        for: 15m
+        annotations:
+          summary: "Anthropic API spend over the last 24h has exceeded the configured budget"
+          description: >-
+            sum(llm:spend_usd:24h) has been above the configured budget for 15 minutes.
+            Break it down by model on the "LLM cost" dashboard (uid cpa-llm-cost).
+            If this fired while every panel reads $0.00, the prices in pricing.properties are
+            still unset and the threshold is what needs checking, not the spend.
+        labels:
+          severity: warning
+          component: llm-cost
+        isPaused: false
+        # NoData is not an alert: before the first chat turn of a 24h window the recorded series
+        # genuinely has no samples, and "nobody used the assistant today" must not page anyone.
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus-15s
+            model:
+              refId: A
+              # The recorded series, not a live 24h increase(): the rule evaluates every minute and
+              # recomputing the join each time would walk a full day of samples per evaluation.
+              expr: sum(llm:spend_usd:24h)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    # >>> THE BUDGET, IN USD OVER A ROLLING 24 HOURS. Edit this one number. <<<
+                    params:
+                      - 10
+
+# ---------------------------------------------------------------------------------------------
+# STUB CONTACT POINT — replace the address below with your own.
+# ---------------------------------------------------------------------------------------------
+# Email is the stub because it needs no outbound URL and fails visibly in the Grafana log rather
+# than silently succeeding against a placeholder webhook. This stack has no SMTP configured, so
+# nothing is actually delivered until you either set GF_SMTP_* on the lgtm service in compose.yaml,
+# or swap this receiver for the transport you want:
+#
+#   type: webhook   settings: { url: https://... }        <- ntfy, a bot, anything HTTP
+#   type: telegram  settings: { bottoken: ..., chatid: ... }
+#
+# Contact-point settings are secrets; put them in .env and reference them as $VARIABLE here rather
+# than committing them, the same way the threshold above is referenced.
+contactPoints:
+  - orgId: 1
+    name: llm-cost
+    receivers:
+      - uid: cpa-llm-cost-receiver
+        type: email
+        settings:
+          addresses: change-me@example.com
+          singleEmail: true
+
+# The routing tree.
+#
+# Grafana provisioning REPLACES the whole policy tree rather than adding to it, and the root
+# receiver must be a contact point that actually exists — the obvious-looking
+# `receiver: grafana-default-email` is NOT one in this image, and getting that wrong does not
+# degrade gracefully: Grafana 13 fails the entire provisioning module at startup and the container
+# never becomes ready. Verified the hard way against grafana/otel-lgtm:latest (Grafana v13.1.1):
+#   "notification policies: llm-cost-alerts.yaml: [alerting.notifications.routes.invalidFormat]
+#    Invalid format of the submitted route: receiver 'grafana-default-email' does not exist."
+# So the root points at the contact point this same file provisions.
+#
+# Consequence to know before adding a second alert rule to this stack: because this is the whole
+# tree, every alert reaches the `llm-cost` contact point unless it gets its own nested route under
+# `routes:` below, matched on its own label.
+policies:
+  - orgId: 1
+    receiver: llm-cost
+    group_by: ["grafana_folder", "alertname"]
+    # A budget alert that renotifies every four hours is a reminder; every five minutes is noise
+    # that gets muted, which is the same as having no alert.
+    repeat_interval: 4h

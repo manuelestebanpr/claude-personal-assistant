@@ -14,6 +14,7 @@ import org.springframework.modulith.test.Scenario;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.api.VisionClient;
 import com.my.custom.claudepersonalassistant.assistant.dto.AssistantRequest;
 import com.my.custom.claudepersonalassistant.assistant.dto.ClassifiedError;
 import com.my.custom.claudepersonalassistant.assistant.dto.ErrorClassification;
@@ -25,6 +26,8 @@ import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
 import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationView;
+import com.my.custom.claudepersonalassistant.chat.dto.ImageUpload;
+import com.my.custom.claudepersonalassistant.chat.dto.McpServerDto;
 import com.my.custom.claudepersonalassistant.chat.dto.MessageRole;
 import com.my.custom.claudepersonalassistant.chat.dto.StreamEvent;
 import com.my.custom.claudepersonalassistant.chat.dto.ToolDto;
@@ -33,6 +36,7 @@ import com.my.custom.claudepersonalassistant.chat.event.ChatCreatedEvent;
 import com.my.custom.claudepersonalassistant.chat.event.ChatDeletedEvent;
 import com.my.custom.claudepersonalassistant.chat.service.ChatNotFoundException;
 import com.my.custom.claudepersonalassistant.mcp.api.McpClientException;
+import com.my.custom.claudepersonalassistant.mcp.api.McpServerDescriptor;
 import com.my.custom.claudepersonalassistant.mcp.api.McpToolGateway;
 import com.my.custom.claudepersonalassistant.mcp.api.ToolDescriptor;
 import com.my.custom.claudepersonalassistant.mcp.api.ToolInvocation;
@@ -52,6 +56,10 @@ class ChatModuleIntegrationTests {
 
     @MockitoBean
     private AssistantClient assistantClient;
+
+    /** The chat module boots alone here, so every assistant port it depends on has to be stood in for. */
+    @MockitoBean
+    private VisionClient visionClient;
 
     @MockitoBean
     private McpToolGateway toolGateway;
@@ -91,7 +99,7 @@ class ChatModuleIntegrationTests {
         ConversationDto chat = chatFacade.createConversation();
 
         List<StreamEvent> events = new ArrayList<>();
-        chatFacade.prepareTurn(chat.id(), "Hi there").stream(events::add);
+        chatFacade.prepareTurn(chat.id(), "Hi there", List.of()).stream(events::add);
 
         assertThat(events).extracting(StreamEvent::type)
                 .containsExactly(StreamEvent.Type.DELTA, StreamEvent.Type.DELTA, StreamEvent.Type.DONE);
@@ -105,12 +113,76 @@ class ChatModuleIntegrationTests {
         assertThat(reopened.conversation().title()).isEqualTo("Hi there");
 
         // The next turn replays the persisted history as model context.
-        chatFacade.prepareTurn(chat.id(), "And again").stream(event -> { });
+        chatFacade.prepareTurn(chat.id(), "And again", List.of()).stream(event -> { });
         ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
         verify(assistantClient, times(2)).stream(requests.capture(), any());
         assertThat(requests.getAllValues().getLast().history()).containsExactly(
                 new HistoryMessage(HistoryRole.USER, "Hi there"),
                 new HistoryMessage(HistoryRole.ASSISTANT, "Hello world"));
+    }
+
+    @Test
+    void persistsAnAttachedImageShowsItToTheModelAndRehydratesItOnReopen() {
+        willAnswer(invocation -> null).given(assistantClient).stream(any(), any());
+        ConversationDto chat = chatFacade.createConversation();
+        byte[] bytes = {(byte) 0xFF, (byte) 0xD8, 0x01, 0x02};
+
+        chatFacade.prepareTurn(chat.id(), "what is this?",
+                List.of(new ImageUpload("image/jpeg", bytes))).stream(event -> { });
+
+        ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
+        verify(assistantClient).stream(requests.capture(), any());
+        AssistantRequest sent = requests.getValue();
+        assertThat(sent.images()).singleElement().satisfies(image -> {
+            assertThat(image.mediaType()).isEqualTo("image/jpeg");
+            assertThat(image.data()).isEqualTo(bytes);
+        });
+
+        ConversationView reopened = chatFacade.openConversation(chat.id());
+        ChatMessageDto userMessage = reopened.messages().getFirst();
+        // Stored text is what the user typed — the note the model gets is not part of the record.
+        assertThat(userMessage.content()).isEqualTo("what is this?");
+        assertThat(userMessage.attachments()).singleElement()
+                .satisfies(attachment -> assertThat(attachment.mediaType()).isEqualTo("image/jpeg"));
+        assertThat(userMessage.attachments().getFirst().id()).isNotNull();
+    }
+
+    /**
+     * The model can see an image but cannot name one, and an MCP tool that reads an image takes an
+     * id. The id has to reach the model through the only channel it reads — the text of the turn —
+     * and it has to survive into replayed history, or a follow-up turn cannot refer back to it.
+     */
+    @Test
+    void tellsTheModelEachImageSIdInThisTurnAndInReplayedHistory() {
+        willAnswer(invocation -> null).given(assistantClient).stream(any(), any());
+        ConversationDto chat = chatFacade.createConversation();
+
+        chatFacade.prepareTurn(chat.id(), "here is the receipt",
+                List.of(new ImageUpload("image/png", new byte[] {1, 2, 3}))).stream(event -> { });
+        chatFacade.prepareTurn(chat.id(), "add them to my groceries", List.of()).stream(event -> { });
+
+        ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
+        verify(assistantClient, times(2)).stream(requests.capture(), any());
+        assertThat(requests.getAllValues().getFirst().userText())
+                .startsWith("here is the receipt")
+                .containsPattern("\\[attached images: #\\d+ \\(image/png\\)]");
+        assertThat(requests.getAllValues().getLast().history().getFirst().text())
+                .containsPattern("\\[attached images: #\\d+ \\(image/png\\)]");
+        // The bytes are not resent — only the id survives. See AssistantRequest for why.
+        assertThat(requests.getAllValues().getLast().images()).isEmpty();
+    }
+
+    @Test
+    void namesAChatOpenedWithNothingButAnImage() {
+        willAnswer(invocation -> null).given(assistantClient).stream(any(), any());
+        ConversationDto chat = chatFacade.createConversation();
+
+        chatFacade.prepareTurn(chat.id(), "",
+                List.of(new ImageUpload("image/jpeg", new byte[] {9}))).stream(event -> { });
+
+        // Better than an untitled row in the sidebar, which is what deriving from empty text gives.
+        assertThat(chatFacade.openConversation(chat.id()).conversation().title())
+                .contains("attached images");
     }
 
     @Test
@@ -126,7 +198,7 @@ class ChatModuleIntegrationTests {
         ConversationDto chat = chatFacade.createConversation();
 
         List<StreamEvent> events = new ArrayList<>();
-        chatFacade.prepareTurn(chat.id(), "Hi").stream(events::add);
+        chatFacade.prepareTurn(chat.id(), "Hi", List.of()).stream(events::add);
 
         assertThat(events).extracting(StreamEvent::type)
                 .containsExactly(StreamEvent.Type.DELTA, StreamEvent.Type.ERROR);
@@ -153,7 +225,7 @@ class ChatModuleIntegrationTests {
         ConversationDto chat = chatFacade.createConversation();
 
         List<StreamEvent> events = new ArrayList<>();
-        chatFacade.prepareTurn(chat.id(), "Hi").stream(events::add);
+        chatFacade.prepareTurn(chat.id(), "Hi", List.of()).stream(events::add);
 
         assertThat(events).extracting(StreamEvent::type).containsExactly(StreamEvent.Type.ERROR);
         assertThat(chatFacade.openConversation(chat.id()).messages())
@@ -170,9 +242,9 @@ class ChatModuleIntegrationTests {
         }).given(assistantClient).stream(any(), any());
         ConversationDto chat = chatFacade.createConversation();
 
-        chatFacade.prepareTurn(chat.id(), "m1").stream(event -> { });
-        chatFacade.prepareTurn(chat.id(), "m2").stream(event -> { });
-        chatFacade.prepareTurn(chat.id(), "m3").stream(event -> { });
+        chatFacade.prepareTurn(chat.id(), "m1", List.of()).stream(event -> { });
+        chatFacade.prepareTurn(chat.id(), "m2", List.of()).stream(event -> { });
+        chatFacade.prepareTurn(chat.id(), "m3", List.of()).stream(event -> { });
 
         ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
         verify(assistantClient, times(3)).stream(requests.capture(), any());
@@ -184,7 +256,22 @@ class ChatModuleIntegrationTests {
     }
 
     @Test
-    void listsToolsTranslatedIntoTheChatModuleSOwnView() {
+    void listsServersTranslatedIntoTheChatModulesOwnViewIncludingLocalOrRemote() {
+        given(toolGateway.listServers()).willReturn(List.of(
+                new McpServerDescriptor("local", "Local", "http://localhost:8080/mcp", "STATELESS",
+                        true, true, 1, null),
+                new McpServerDescriptor("gmail-mcp", "Gmail", "https://gmailmcp.googleapis.com/mcp/v1",
+                        "SESSION", false, false, 0, "MCP server unreachable")));
+
+        assertThat(chatFacade.listServers()).containsExactly(
+                new McpServerDto("local", "Local", "http://localhost:8080/mcp", "STATELESS",
+                        true, true, 1, null),
+                new McpServerDto("gmail-mcp", "Gmail", "https://gmailmcp.googleapis.com/mcp/v1",
+                        "SESSION", false, false, 0, "MCP server unreachable"));
+    }
+
+    @Test
+    void listsToolsTranslatedIntoTheChatModulesOwnView() {
         given(toolGateway.listTools()).willReturn(List.of(new ToolDescriptor("local", "Local",
                 "get_current_hour", "Current hour", "Returns the time.",
                 Map.of("type", "object", "additionalProperties", false))));
@@ -198,7 +285,7 @@ class ChatModuleIntegrationTests {
      * the translation out of the MCP schema — in the order the server declared them.
      */
     @Test
-    void carriesEachToolSArgumentsThroughIntoTheViewModel() {
+    void carriesEachToolsArgumentsThroughIntoTheViewModel() {
         given(toolGateway.listTools()).willReturn(List.of(new ToolDescriptor("local", "Local",
                 "gmail_search_messages", "Search Gmail", "Searches Gmail.",
                 Map.of("type", "object",
@@ -252,7 +339,7 @@ class ChatModuleIntegrationTests {
 
         // ...and becomes model context, which is what lets the model answer a question it cannot
         // answer on its own.
-        chatFacade.prepareTurn(chat.id(), "What time is it?").stream(event -> { });
+        chatFacade.prepareTurn(chat.id(), "What time is it?", List.of()).stream(event -> { });
         ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
         verify(assistantClient).stream(requests.capture(), any());
         assertThat(requests.getValue().history()).containsExactly(
@@ -271,7 +358,7 @@ class ChatModuleIntegrationTests {
         }).given(assistantClient).stream(any(), any());
         ConversationDto chat = chatFacade.createConversation();
 
-        chatFacade.prepareTurn(chat.id(), "What time is it?").stream(event -> { });
+        chatFacade.prepareTurn(chat.id(), "What time is it?", List.of()).stream(event -> { });
 
         ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
         verify(assistantClient).stream(requests.capture(), any());
@@ -291,7 +378,7 @@ class ChatModuleIntegrationTests {
         }).given(assistantClient).stream(any(), any());
         ConversationDto chat = chatFacade.createConversation();
 
-        chatFacade.prepareTurn(chat.id(), "Hi").stream(event -> { });
+        chatFacade.prepareTurn(chat.id(), "Hi", List.of()).stream(event -> { });
 
         ArgumentCaptor<AssistantRequest> requests = ArgumentCaptor.forClass(AssistantRequest.class);
         verify(assistantClient).stream(requests.capture(), any());

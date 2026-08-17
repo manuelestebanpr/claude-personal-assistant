@@ -40,7 +40,9 @@ class CurrentHourTool implements McpTool {
 
     @Override
     public String description() {
-        return "Returns the current time of the mcp server use it when trying to estimate times from now. ";
+        return "Returns the current time of day on the server, with its time zone. Call it before "
+                + "answering anything relative to now — 'this afternoon', 'in two hours', 'is it "
+                + "still today' — since the model has no clock of its own.";
     }
 
     @Override

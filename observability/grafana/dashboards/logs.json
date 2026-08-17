@@ -1,0 +1,120 @@
+{
+  "uid": "cpa-logs",
+  "title": "Claude Personal Assistant — Logs & Traces",
+  "description": "The narrative signals: every log line the hand-written Logback -> OpenTelemetry appender exports to Loki, and the traces Tempo received for the same requests. It exists so a broken export path is visible on a dashboard instead of only in an Explore search nobody ran. It charts no Prometheus metric at all — rates, latencies and counters live on the Modules and JVM & HTTP dashboards — and it deliberately shows no per-chat or per-conversation breakdown, because service_name is Loki's only index label here and promoting a chat id to a label would create one Loki stream per conversation forever.",
+  "tags": ["claude-personal-assistant", "logs", "traces"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "description": "A textbox, not a label_values() query like the other two dashboards use. A Loki label query returns nothing until the first log line is ingested, and Loki rejects a stream selector whose every matcher is empty-compatible ({service_name=~\"\"}) with an error rather than an empty result — so a query variable would turn a quiet stack into a red dashboard. The value is resource attribute service.name, which the OTLP ingest path flattens to the service_name index label.",
+        "type": "textbox",
+        "query": "claude-personal-assistant",
+        "current": { "text": "claude-personal-assistant", "value": "claude-personal-assistant" },
+        "options": [
+          {
+            "text": "claude-personal-assistant",
+            "value": "claude-personal-assistant",
+            "selected": true
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Logs",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "logs",
+      "title": "Application log",
+      "description": "The reason this dashboard exists: the other two are twenty Prometheus panels and render no log line at all, so the hand-written Logback -> OpenTelemetry appender (audit/logging/) could stop exporting and nothing on any dashboard would change — the failure would only surface as an empty Explore search nobody ran. An empty panel here is a visible regression. enableLogDetails is on because the structured facts every log.atInfo().addKeyValue(...) call attaches arrive as structured metadata, and the row detail view is where they are readable.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 1 },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "range",
+          "expr": "{service_name=\"$service\"}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error log rate",
+      "description": "detected_level is NOT an index label. service_name is the only one this stack has — GET /loki/api/v1/labels answers [\"service_name\"] — and detected_level is structured metadata like every other addKeyValue fact, however label-like it looks in a result's stream map. That is exactly why the level filter sits AFTER the {service_name=\"$service\"} stream selector: a pipeline stage can match structured metadata, a stream selector cannot, so {detected_level=\"error\"} would select no stream and silently return nothing. Deliberately a rate rather than a count: it stays comparable when the dashboard's time range changes, which is how the panel beside the Prometheus error meters is meant to be read.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 11 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 20 } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "range",
+          "legendFormat": "errors/s",
+          "expr": "sum(rate({service_name=\"$service\"} | detected_level=\"error\" [$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Tool invocation log",
+      "description": "The shape to copy for anything this application logs. service_name is the ONLY index label — GET /loki/api/v1/labels answers [\"service_name\"] and nothing else. detected_level, trace_id, span_id, tool, outcome, chatId and every other log.atInfo().addKeyValue(...) fact are STRUCTURED METADATA: they show up inside a result's stream map, which is what makes them look like labels, but no selector can match them. So the filter must sit AFTER the stream selector, as a pipeline stage ({service_name=\"$service\"} | tool != \"\"), never inside it — {tool=\"x\"} selects no stream and returns nothing, which reads as \"the tool never ran\" instead of \"that is not a label\".",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 11 },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "range",
+          "expr": "{service_name=\"$service\"} | tool != \"\""
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Traces",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 19 }
+    },
+    {
+      "type": "table",
+      "title": "Recent traces",
+      "description": "Tempo's side of the same regression: sampling is pinned to 1.0 in observability.properties precisely so every turn is traceable, and until this panel existed nothing outside Explore proved a single span had arrived. Matching on resource.service.name rather than a span name keeps the panel meaningful when spans are renamed. Click a trace id to open the span view; the Loki datasource's derived trace_id field pivots the other way, from a log line into the same trace.",
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "traceql",
+          "limit": 20,
+          "tableType": "traces",
+          "query": "{resource.service.name=\"$service\"}"
+        }
+      ]
+    }
+  ]
+}

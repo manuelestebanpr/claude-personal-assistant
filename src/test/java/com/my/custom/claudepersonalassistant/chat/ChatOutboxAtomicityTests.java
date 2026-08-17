@@ -12,6 +12,7 @@ import org.springframework.modulith.test.Scenario;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.my.custom.claudepersonalassistant.assistant.api.AssistantClient;
+import com.my.custom.claudepersonalassistant.assistant.api.VisionClient;
 import com.my.custom.claudepersonalassistant.chat.api.ChatFacade;
 import com.my.custom.claudepersonalassistant.chat.event.ChatCreatedEvent;
 import com.my.custom.claudepersonalassistant.mcp.api.McpToolGateway;
@@ -30,6 +31,10 @@ class ChatOutboxAtomicityTests {
 
     @MockitoBean
     private AssistantClient assistantClient;
+
+    /** The chat module boots alone here, so every assistant port it depends on has to be stood in for. */
+    @MockitoBean
+    private VisionClient visionClient;
 
     @MockitoBean
     private McpToolGateway toolGateway;

@@ -82,6 +82,6 @@ class DefaultConversationService implements ConversationService {
     }
 
     private ConversationDto toDto(ConversationEntity entity) {
-        return new ConversationDto(entity.getId(), entity.getTitle(), entity.getCreatedAt());
+        return new ConversationDto(entity.getId(), entity.getTitle());
     }
 }

@@ -25,7 +25,7 @@ import com.my.custom.claudepersonalassistant.mcp.protocol.McpProtocol;
  */
 class SessionWireClient implements McpWireClient {
 
-    static final String VERSION = "2025-11-25";
+    static final String PROTOCOL_VERSION = "2025-11-25";
     static final String HEADER_SESSION_ID = "Mcp-Session-Id";
 
     private static final String METHOD_INITIALIZE = "initialize";
@@ -36,7 +36,7 @@ class SessionWireClient implements McpWireClient {
     private final RestClient restClient;
     private final String url;
     private final AtomicLong requestIds = new AtomicLong();
-    private final ReentrantLock handshake = new ReentrantLock();
+    private final ReentrantLock handshakeLock = new ReentrantLock();
 
     /** Null until the handshake completes; a server may legitimately never issue one. */
     private String sessionId;
@@ -61,18 +61,20 @@ class SessionWireClient implements McpWireClient {
                 initialize();
                 return post(method, params).getBody();
             }
-            throw new McpClientException("MCP request '%s' failed".formatted(method), transportFailure);
+            throw new McpClientException(
+                    "MCP request '%s' failed: %s".formatted(method, transportFailure.getMessage()),
+                    transportFailure);
         }
     }
 
     private void initialize() {
-        handshake.lock();
+        handshakeLock.lock();
         try {
             if (initialized) {
                 return;
             }
             ResponseEntity<JsonRpcResponse> response = post(METHOD_INITIALIZE, Map.of(
-                    "protocolVersion", VERSION,
+                    "protocolVersion", PROTOCOL_VERSION,
                     "capabilities", Map.of(),
                     "clientInfo", CLIENT_INFO));
             sessionId = response.getHeaders().getFirst(HEADER_SESSION_ID);
@@ -83,10 +85,11 @@ class SessionWireClient implements McpWireClient {
         }
         catch (RestClientException failed) {
             reset();
-            throw new McpClientException("MCP handshake with %s failed".formatted(url), failed);
+            throw new McpClientException(
+                    "MCP handshake with %s failed: %s".formatted(url, failed.getMessage()), failed);
         }
         finally {
-            handshake.unlock();
+            handshakeLock.unlock();
         }
     }
 
@@ -96,7 +99,7 @@ class SessionWireClient implements McpWireClient {
                 .contentType(MediaType.APPLICATION_JSON)
                 .headers(headers -> {
                     headers.set("Accept", "application/json, text/event-stream");
-                    headers.set(McpProtocol.HEADER_PROTOCOL_VERSION, VERSION);
+                    headers.set(McpProtocol.HEADER_PROTOCOL_VERSION, PROTOCOL_VERSION);
                     if (sessionId != null) {
                         headers.set(HEADER_SESSION_ID, sessionId);
                     }
@@ -117,7 +120,7 @@ class SessionWireClient implements McpWireClient {
                 .contentType(MediaType.APPLICATION_JSON)
                 .headers(headers -> {
                     headers.set("Accept", "application/json, text/event-stream");
-                    headers.set(McpProtocol.HEADER_PROTOCOL_VERSION, VERSION);
+                    headers.set(McpProtocol.HEADER_PROTOCOL_VERSION, PROTOCOL_VERSION);
                     if (sessionId != null) {
                         headers.set(HEADER_SESSION_ID, sessionId);
                     }

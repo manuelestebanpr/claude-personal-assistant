@@ -11,10 +11,12 @@ package com.my.custom.claudepersonalassistant.mcp.api;
  * @param name      human-readable label
  * @param url       endpoint the client posts to
  * @param protocol  MCP revision family the client uses for it
+ * @param local     whether this server is this application's own loopback endpoint, as opposed to
+ *                  a third-party/remote server
  * @param reachable whether the last catalogue request succeeded
  * @param toolCount tools it exposed, zero when unreachable or when it exposes none
  * @param detail    why it is unreachable, or {@code null} when it is fine
  */
 public record McpServerDescriptor(String id, String name, String url, String protocol,
-        boolean reachable, int toolCount, String detail) {
+        boolean local, boolean reachable, int toolCount, String detail) {
 }

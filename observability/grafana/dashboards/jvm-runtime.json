@@ -1,6 +1,7 @@
 {
   "uid": "cpa-jvm-runtime",
   "title": "Claude Personal Assistant — JVM & HTTP",
+  "description": "Runtime health of the process and the servlet layer in front of it: heap and non-heap pools, GC, threads, classes, CPU, and the http.server.requests timer Boot registers per endpoint. Everything here comes from Micrometer's built-in binders, so it says whether the JVM is healthy and whether requests are being served — never whether an answer was any good. Nothing on this dashboard is application-specific: module boundaries, tool calls, token spend and stream errors live on Modules, and log lines and traces on Logs & Traces. Two panels under-report by design and say so in their own descriptions — Threads (virtual threads are not counted) and Server error ratio (a mid-stream failure is still a 200).",
   "tags": ["claude-personal-assistant", "jvm"],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -13,7 +14,7 @@
         "name": "job",
         "label": "Service",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
         "query": "label_values(jvm_memory_used_bytes, job)",
         "current": { "text": "claude-personal-assistant", "value": "claude-personal-assistant" },
         "refresh": 1,
@@ -31,7 +32,7 @@
       "type": "timeseries",
       "title": "Heap used vs max",
       "description": "Micrometer publishes jvm.memory.* per pool; the name regex tolerates the unit suffix Prometheus appends on OTLP ingest.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -55,7 +56,7 @@
     {
       "type": "timeseries",
       "title": "Non-heap used by pool",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -70,7 +71,7 @@
       "type": "timeseries",
       "title": "GC pause time per second",
       "description": "Seconds of pause per wall-clock second. Sustained values near 1 mean the JVM is spending all its time collecting.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -84,7 +85,7 @@
     {
       "type": "timeseries",
       "title": "GC collections per second",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -103,8 +104,8 @@
     {
       "type": "timeseries",
       "title": "Threads",
-      "description": "The app runs on virtual threads (spring.threads.virtual.enabled), so the live count stays low even under concurrent streaming.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "These are PLATFORM threads only. jvm.threads.* is backed by ThreadMXBean, which has no visibility into virtual threads at all, and spring.threads.virtual.enabled=true means every request — including a streaming turn that stays open for the whole answer — runs on one. So this panel does NOT measure concurrency: it stays flat under load, and a hundred simultaneous streams look identical to none. Read it for carrier-pool and container-thread health, and use the request rate and latency panels below, or the module operation panels on the Modules dashboard, to see how much work is actually in flight. A rising live count here under virtual threads is unusual and worth investigating — it means something is still spawning platform threads.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 18 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -128,7 +129,7 @@
     {
       "type": "timeseries",
       "title": "Classes loaded",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 18 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -142,7 +143,7 @@
     {
       "type": "timeseries",
       "title": "CPU utilisation",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 18 },
       "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -158,7 +159,7 @@
     {
       "type": "timeseries",
       "title": "Request rate by endpoint",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -173,7 +174,7 @@
       "type": "timeseries",
       "title": "Latency p95 by endpoint",
       "description": "Requires management.metrics.distribution.percentiles-histogram.http.server.requests=true; without the histogram there are no _bucket series to quantile over. The streaming endpoint is expected to be slow — it stays open for the whole answer.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
       "fieldConfig": { "defaults": { "unit": "ms", "custom": { "fillOpacity": 10 } }, "overrides": [] },
       "targets": [
@@ -187,8 +188,8 @@
     {
       "type": "stat",
       "title": "Server error ratio",
-      "description": "The numerator is wrapped in `or vector(0)`: with no 5xx in the window it matches no series at all, and the panel would read \"No data\" in exactly the case where the answer is zero.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "UNDER-REPORTS, and cannot be fixed here. The streaming endpoint commits its HTTP status the moment the first token is written, so a failure after that point cannot be a 5xx: it is delivered in-band as an NDJSON ERROR line with a RETRYABLE/TERMINAL classification, the response still ends 200, and this tile stays green through a turn the user watched break. It measures failures that happened BEFORE the body started — a missing chat, a rejected request. For the failures it cannot see, read \"Stream errors by classification\" and \"Failed operations per second\" on the Modules dashboard; a green tile here beside a live line there is the expected shape, not a contradiction. The numerator is wrapped in `or vector(0)`: with no 5xx in the window it matches no series at all, and the panel would read \"No data\" in exactly the case where the answer is zero.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
       "gridPos": { "h": 5, "w": 24, "x": 0, "y": 35 },
       "fieldConfig": {
         "defaults": {

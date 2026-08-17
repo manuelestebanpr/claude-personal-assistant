@@ -6,6 +6,7 @@ import java.util.Map;
 import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ConversationView;
+import com.my.custom.claudepersonalassistant.chat.dto.ImageUpload;
 import com.my.custom.claudepersonalassistant.chat.dto.McpServerDto;
 import com.my.custom.claudepersonalassistant.chat.dto.ToolDto;
 
@@ -28,8 +29,12 @@ public interface ChatFacade {
      * missing chat fails before the response body starts — then returns a {@link ChatTurn}
      * that streams the assistant answer, and persists it (partial on error/cancel, full on
      * completion), once driven.
+     *
+     * @param images sent with the message; stored with it and shown to the model this turn. Empty
+     *               for an ordinary message. A message with images may have blank {@code userText}
+     *               — a photograph on its own is a complete thing to say
      */
-    ChatTurn prepareTurn(Long chatId, String userText);
+    ChatTurn prepareTurn(Long chatId, String userText, List<ImageUpload> images);
 
     /**
      * The MCP servers this application connects to, for the picker the composer opens on

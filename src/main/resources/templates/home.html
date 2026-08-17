@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Claude Personal Assistant</title>
+    <link rel="stylesheet" th:href="@{/css/chat.css}"/>
+</head>
+<body class="home-body">
+<main class="home">
+    <h1 class="home-title">Choose an assistant</h1>
+    <div class="assistant-grid">
+        <form th:action="@{/chats}" method="post" class="assistant-card-form">
+            <button type="submit" class="assistant-card">
+                <span class="assistant-card-title">Default</span>
+                <span class="assistant-card-description">General-purpose assistant with chat history and MCP tools.</span>
+            </button>
+        </form>
+    </div>
+</main>
+</body>
+</html>

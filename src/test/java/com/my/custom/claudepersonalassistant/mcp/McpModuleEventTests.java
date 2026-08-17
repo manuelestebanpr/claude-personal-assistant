@@ -1,6 +1,8 @@
 package com.my.custom.claudepersonalassistant.mcp;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import io.micrometer.core.instrument.Counter;
@@ -8,12 +10,17 @@ import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.event.EventListener;
 import org.springframework.modulith.test.ApplicationModuleTest;
 
 import com.my.custom.claudepersonalassistant.audit.AuditMetrics;
 import com.my.custom.claudepersonalassistant.mcp.domain.ToolRegistry;
+import com.my.custom.claudepersonalassistant.mcp.event.ToolInvokedEvent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 import static org.awaitility.Awaitility.await;
 
 /**
@@ -24,12 +31,16 @@ import static org.awaitility.Awaitility.await;
 class McpModuleEventTests {
 
     private static final String TOOL = "get_current_hour";
+    private static final String LOCAL_SERVER_ID = "local";
 
     @Autowired
     private ToolRegistry toolRegistry;
 
     @Autowired
     private MeterRegistry meterRegistry;
+
+    @Autowired
+    private InvokedEvents invokedEvents;
 
     /**
      * Invokes the tool directly rather than through {@code Scenario}, which runs its stimulus
@@ -52,10 +63,56 @@ class McpModuleEventTests {
                 assertThat(invocationsRecordedByAudit()).isEqualTo(before + 1));
     }
 
+    /**
+     * A tool name is unique per server only, so an event naming just the tool cannot be joined back
+     * to the server that ran it. The registry cannot supply the id — MCP never tells a server what
+     * its clients call it — so {@code ToolEventPublisher} stamps it, and this pins that it reaches
+     * the listener rather than arriving null.
+     */
+    @Test
+    void anInvokedEventNamesTheServerThatRanTheTool() {
+        invokedEvents.recorded().clear();
+
+        toolRegistry.invoke(TOOL, Map.of());
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertThat(invokedEvents.recorded())
+                        .extracting(ToolInvokedEvent::serverId, ToolInvokedEvent::toolName)
+                        .contains(tuple(LOCAL_SERVER_ID, TOOL)));
+    }
+
     private double invocationsRecordedByAudit() {
         Counter counter = meterRegistry.find(AuditMetrics.TOOLS_INVOKED)
                 .tags(AuditMetrics.TAG_TOOL, TOOL, AuditMetrics.TAG_OUTCOME, AuditMetrics.OUTCOME_SUCCESS)
                 .counter();
         return counter == null ? 0.0 : counter.count();
+    }
+
+    /**
+     * A plain {@code @EventListener} rather than an {@code @ApplicationModuleListener}: this one
+     * observes the event as published, without the outbox round trip, which is what makes it a check
+     * on the publisher's attribution and not a second copy of the delivery test above.
+     */
+    @TestConfiguration
+    static class RecordingConfiguration {
+
+        @Bean
+        InvokedEvents invokedEvents() {
+            return new InvokedEvents();
+        }
+    }
+
+    static class InvokedEvents {
+
+        private final List<ToolInvokedEvent> recorded = new ArrayList<>();
+
+        @EventListener
+        void on(ToolInvokedEvent event) {
+            recorded.add(event);
+        }
+
+        List<ToolInvokedEvent> recorded() {
+            return recorded;
+        }
     }
 }

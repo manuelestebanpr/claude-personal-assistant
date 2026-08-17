@@ -27,7 +27,7 @@ class GmailToolsTest {
             new GoogleWorkspaceProperties.Endpoints("t", "g", "c", "primary"),
             new GoogleWorkspaceProperties.Limits(2, 3, 20));
 
-    private final GmailSearchTool search = new GmailSearchTool(gmail, properties);
+    private final GmailSearchMessagesTool search = new GmailSearchMessagesTool(gmail, properties);
     private final GmailGetMessageTool read = new GmailGetMessageTool(gmail, properties);
     private final GmailCreateDraftTool draft = new GmailCreateDraftTool(gmail);
 
@@ -119,7 +119,7 @@ class GmailToolsTest {
         return new GmailMessage(id, threadId, body, new GmailMessage.Payload("text/plain",
                 List.of(new GmailMessage.Header("From", from), new GmailMessage.Header("Subject", subject)),
                 new GmailMessage.Body(java.util.Base64.getUrlEncoder().withoutPadding()
-                        .encodeToString(body.getBytes(java.nio.charset.StandardCharsets.UTF_8)), body.length()),
+                        .encodeToString(body.getBytes(java.nio.charset.StandardCharsets.UTF_8))),
                 null));
     }
 }

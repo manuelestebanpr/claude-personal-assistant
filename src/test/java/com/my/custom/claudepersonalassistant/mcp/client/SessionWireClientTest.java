@@ -52,7 +52,7 @@ class SessionWireClientTest {
     void opensASessionBeforeItsFirstRealRequest() {
         server.expect(requestTo(URL))
                 .andExpect(jsonPath("$.method").value("initialize"))
-                .andExpect(jsonPath("$.params.protocolVersion").value(SessionWireClient.VERSION))
+                .andExpect(jsonPath("$.params.protocolVersion").value(SessionWireClient.PROTOCOL_VERSION))
                 .andExpect(jsonPath("$.params.clientInfo.name").value("claude-personal-assistant"))
                 .andRespond(withSuccess("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}",
                         MediaType.APPLICATION_JSON)
@@ -66,7 +66,7 @@ class SessionWireClientTest {
         server.expect(requestTo(URL))
                 .andExpect(jsonPath("$.method").value(McpProtocol.METHOD_TOOLS_LIST))
                 .andExpect(header(SessionWireClient.HEADER_SESSION_ID, "session-42"))
-                .andExpect(header(McpProtocol.HEADER_PROTOCOL_VERSION, SessionWireClient.VERSION))
+                .andExpect(header(McpProtocol.HEADER_PROTOCOL_VERSION, SessionWireClient.PROTOCOL_VERSION))
                 .andRespond(withSuccess(TOOLS_RESULT, MediaType.APPLICATION_JSON));
 
         JsonRpcResponse response = client.send(McpProtocol.METHOD_TOOLS_LIST, null, Map.of());
@@ -129,7 +129,43 @@ class SessionWireClientTest {
         assertThatThrownBy(() -> client.send(McpProtocol.METHOD_TOOLS_LIST, null, Map.of()))
                 .isInstanceOf(McpClientException.class)
                 .hasMessageContaining("handshake")
-                .hasMessageContaining(URL);
+                .hasMessageContaining(URL)
+                .satisfies(thrown -> assertThat(thrown.getMessage()).contains(thrown.getCause().getMessage()));
+    }
+
+    /**
+     * The real bug this pins: the underlying transport failure's reason used to be swallowed,
+     * leaving only "MCP handshake with <url> failed" with no indication of what actually went
+     * wrong (e.g. an upstream 403 from an OAuth scope problem).
+     */
+    @Test
+    void includesTheUnderlyingTransportFailureReasonWhenTheHandshakeFails() {
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.FORBIDDEN));
+
+        assertThatThrownBy(() -> client.send(McpProtocol.METHOD_TOOLS_LIST, null, Map.of()))
+                .isInstanceOf(McpClientException.class)
+                .satisfies(thrown -> {
+                    assertThat(thrown.getCause()).isNotNull();
+                    assertThat(thrown.getMessage()).contains(thrown.getCause().getMessage());
+                });
+    }
+
+    /**
+     * Same swallowed-cause bug, but on the post-handshake request path rather than the handshake
+     * itself.
+     */
+    @Test
+    void includesTheUnderlyingTransportFailureReasonWhenARequestFailsAfterTheHandshake() {
+        expectHandshake("session-42");
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_GATEWAY));
+
+        assertThatThrownBy(() -> client.send(McpProtocol.METHOD_TOOLS_LIST, null, Map.of()))
+                .isInstanceOf(McpClientException.class)
+                .hasMessageContaining("MCP request")
+                .satisfies(thrown -> {
+                    assertThat(thrown.getCause()).isNotNull();
+                    assertThat(thrown.getMessage()).contains(thrown.getCause().getMessage());
+                });
     }
 
     private void expectHandshake(String sessionId) {

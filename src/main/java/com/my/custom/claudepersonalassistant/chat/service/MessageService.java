@@ -3,6 +3,7 @@ package com.my.custom.claudepersonalassistant.chat.service;
 import java.util.List;
 
 import com.my.custom.claudepersonalassistant.chat.dto.ChatMessageDto;
+import com.my.custom.claudepersonalassistant.chat.dto.ImageUpload;
 import com.my.custom.claudepersonalassistant.chat.dto.MessageRole;
 
 /**
@@ -22,6 +23,14 @@ interface MessageService {
 
     ChatMessageDto append(Long chatId, MessageRole role, String content);
 
-    /** Deletes every message belonging to a conversation. */
+    /**
+     * Appends a message together with the images sent alongside it, in one transaction — a message
+     * whose attachments failed to store would render as text the user never typed.
+     *
+     * @return the message, with its attachments carrying the ids the database assigned
+     */
+    ChatMessageDto append(Long chatId, MessageRole role, String content, List<ImageUpload> images);
+
+    /** Deletes every message belonging to a conversation, and everything attached to them. */
     void deleteAll(Long chatId);
 }

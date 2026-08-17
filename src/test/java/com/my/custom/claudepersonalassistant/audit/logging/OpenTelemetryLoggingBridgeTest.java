@@ -23,8 +23,13 @@ import static org.mockito.Mockito.mock;
  * bridge below is what makes log export happen at all.
  *
  * <p>Assertions compare the attached appenders before and after rather than looking one up by
- * name: the root logger is JVM-global, so a Spring context booted by another test in the same
- * fork may have installed an appender under the very same name.
+ * name, because the root logger is JVM-global and this test mutates it. That used to be masking a
+ * real duplicate: the {@code SdkLoggerProvider} is gated on {@code @ConditionalOnEnabledOpenTelemetry}
+ * ({@code management.opentelemetry.enabled}, {@code matchIfMissing=true}) and <em>not</em> on the
+ * export switches, so every cached Spring test context really did install a second appender under
+ * the same name. {@code src/test/resources/application.properties} now sets {@code
+ * management.opentelemetry.enabled=false}, so no context installs one at all — the before/after
+ * diff stays because a shared mutable root logger deserves it, not because a duplicate is expected.
  */
 class OpenTelemetryLoggingBridgeTest {
 
@@ -64,7 +69,11 @@ class OpenTelemetryLoggingBridgeTest {
         assertThat(installed.isStarted()).isFalse();
     }
 
-    /** Test contexts run with OpenTelemetry disabled; the bridge must not fail them. */
+    /**
+     * The state every test context is actually in now that {@code management.opentelemetry.enabled}
+     * is false there: no {@code SdkLoggerProvider} bean, so the bridge has to no-op rather than
+     * fail the context.
+     */
     @Test
     void doesNothingWhenNoLoggerProviderIsPresent() {
         bridge = new OpenTelemetryLoggingBridge(providerOf(null));

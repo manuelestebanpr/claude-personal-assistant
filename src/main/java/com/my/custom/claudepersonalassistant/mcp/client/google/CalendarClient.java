@@ -85,6 +85,24 @@ public class CalendarClient {
                 .body(CalendarEvent.class));
     }
 
+    /**
+     * Removes an event.
+     *
+     * <p>Google answers 204 with an empty body, so there is nothing to return and nothing to render
+     * afterwards but the id the caller already held — which is why this does not read the event
+     * first. A second round trip to recover a title the model already has from
+     * {@code calendar_list_events} would buy nothing and widen the window in which the event can
+     * change underneath us.
+     */
+    public void delete(String eventId) {
+        GoogleApiCalls.call("Calendar event deletion", () -> restClient.delete()
+                .uri(builder -> builder.path("/calendars/{calendarId}/events/{eventId}")
+                        .build(calendarId, eventId))
+                .header(HttpHeaders.AUTHORIZATION, bearer())
+                .retrieve()
+                .toBodilessEntity());
+    }
+
     private Map<String, Object> body(EventDraft draft) {
         Map<String, Object> body = new LinkedHashMap<>();
         if (StringUtils.hasText(draft.summary())) {
@@ -97,10 +115,10 @@ public class CalendarClient {
             body.put("location", draft.location());
         }
         if (draft.start() != null) {
-            body.put("start", time(draft.start()));
+            body.put("start", toEventDateTime(draft.start()));
         }
         if (draft.end() != null) {
-            body.put("end", time(draft.end()));
+            body.put("end", toEventDateTime(draft.end()));
         }
         if (draft.attendees() != null && !draft.attendees().isEmpty()) {
             body.put("attendees", draft.attendees().stream()
@@ -114,7 +132,7 @@ public class CalendarClient {
      * Sends the offset and the zone id together: the offset alone pins the instant, and the zone id
      * is what lets Google keep a recurring or later-moved event correct across a DST boundary.
      */
-    private Map<String, Object> time(ZonedDateTime moment) {
+    private Map<String, Object> toEventDateTime(ZonedDateTime moment) {
         return Map.of(
                 "dateTime", moment.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 "timeZone", moment.getZone().getId());

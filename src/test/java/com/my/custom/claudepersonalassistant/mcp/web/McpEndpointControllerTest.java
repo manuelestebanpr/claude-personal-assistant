@@ -4,7 +4,15 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+import org.slf4j.event.KeyValuePair;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -19,6 +27,7 @@ import com.my.custom.claudepersonalassistant.mcp.domain.ToolRegistry;
 import com.my.custom.claudepersonalassistant.mcp.domain.UnknownToolException;
 import com.my.custom.claudepersonalassistant.mcp.protocol.McpProtocol;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -48,6 +57,25 @@ class McpEndpointControllerTest {
 
     @MockitoBean
     private ToolRegistry toolRegistry;
+
+    private final Logger logger = (Logger) LoggerFactory.getLogger(McpEndpointController.class);
+    private ListAppender<ILoggingEvent> appender;
+    private Level previousLevel;
+
+    @BeforeEach
+    void attachAppender() {
+        appender = new ListAppender<>();
+        appender.start();
+        previousLevel = logger.getLevel();
+        logger.setLevel(Level.TRACE);
+        logger.addAppender(appender);
+    }
+
+    @AfterEach
+    void detachAppender() {
+        logger.detachAppender(appender);
+        logger.setLevel(previousLevel);
+    }
 
     @Test
     void listsToolsOnTheVeryFirstRequestWithNoHandshake() throws Exception {
@@ -185,6 +213,36 @@ class McpEndpointControllerTest {
                         .content(body(McpProtocol.METHOD_TOOLS_LIST, Map.of())))
                 .andExpect(status().isOk())
                 .andExpect(header().doesNotExist("Mcp-Session-Id"));
+    }
+
+    /**
+     * The tool events reach their listener only after the transaction commits, so a served request
+     * would otherwise leave no synchronous trace at the protocol boundary at all.
+     */
+    @Test
+    void logsAServedRequestWithItsMethodAndTool() throws Exception {
+        given(toolRegistry.invoke(eq(TOOL), any())).willReturn(ToolResult.ok("ok"));
+
+        mockMvc.perform(callToolRequest(TOOL, TOOL)).andExpect(status().isOk());
+
+        List<ILoggingEvent> events = appender.list.stream()
+                .filter(event -> McpEndpointController.HANDLED_MESSAGE.equals(event.getMessage()))
+                .toList();
+        assertThat(events).hasSize(1);
+        ILoggingEvent event = events.getFirst();
+        assertThat(event.getLevel()).isEqualTo(Level.DEBUG);
+        assertThat(keyValue(event, McpEndpointController.KEY_METHOD))
+                .isEqualTo(McpProtocol.METHOD_TOOLS_CALL);
+        assertThat(keyValue(event, McpEndpointController.KEY_TOOL)).isEqualTo(TOOL);
+    }
+
+    private Object keyValue(ILoggingEvent event, String key) {
+        for (KeyValuePair pair : event.getKeyValuePairs()) {
+            if (key.equals(pair.key)) {
+                return pair.value;
+            }
+        }
+        return null;
     }
 
     private org.springframework.test.web.servlet.RequestBuilder callToolRequest(String bodyName, String headerName) {

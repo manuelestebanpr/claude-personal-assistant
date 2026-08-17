@@ -12,6 +12,8 @@ import com.my.custom.claudepersonalassistant.mcp.client.google.CalendarEvent;
 import com.my.custom.claudepersonalassistant.mcp.config.ConditionalOnGoogleWorkspace;
 import com.my.custom.claudepersonalassistant.mcp.domain.McpTool;
 import com.my.custom.claudepersonalassistant.mcp.domain.ToolExecutionException;
+import com.my.custom.claudepersonalassistant.mcp.domain.tool.ToolArguments;
+import com.my.custom.claudepersonalassistant.mcp.domain.tool.ToolSchema;
 
 /**
  * Changes an existing event.
@@ -79,6 +81,6 @@ class CalendarUpdateEventTool implements McpTool {
                 List.of()));
 
         return "Updated '%s' (id %s). It now runs %s.".formatted(
-                updated.title(), updated.id(), updated.window());
+                updated.title(), updated.id(), updated.timeRange());
     }
 }

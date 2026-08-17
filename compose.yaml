@@ -3,10 +3,46 @@
 services:
   lgtm:
     image: docker.io/grafana/otel-lgtm:latest
+    # Rootless podman has no root daemon to honour a restart policy across a reboot, so this
+    # alone is not enough. The user must also run once:
+    #   sudo loginctl enable-linger $USER && systemctl --user enable --now podman-restart.service
+    restart: unless-stopped
     ports:
-      - "3000:3000"   # Grafana UI
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
+      # Same reasoning as the OTLP ports below, and it bites harder here: anonymous-Admin is off,
+      # but a Grafana login is then the only thing between a LAN device and full prompt and
+      # completion bodies sitting in Loki. Only the host PC is meant to read this stack, and the
+      # host reaches it over loopback — so nothing is lost by never publishing it any wider.
+      - "127.0.0.1:3000:3000"   # Grafana UI
+      # The app pushes to http://lgtm:4318 over the compose network and never touches the host
+      # port, so publishing OTLP on 0.0.0.0 buys nothing and costs an unauthenticated write
+      # surface: one firewall rule away, any LAN device could inject arbitrary spans, metrics
+      # and logs straight into the persisted lgtm-data volume. Loopback only.
+      - "127.0.0.1:4317:4317"   # OTLP gRPC
+      - "127.0.0.1:4318:4318"   # OTLP HTTP
+      # Tempo and Prometheus are exposed by the image and printed by its run-all.sh as if they
+      # were reachable, but were never published — so every backend query had to detour through
+      # the Grafana datasource proxy or podman exec. CLAUDE.md's container-clock-skew signature
+      # (otelcol_exporter_send_failed_metric_points_total rising in step with
+      # otelcol_receiver_accepted_metric_points_total) is only queryable with 9090 published.
+      # Loopback-only: a debugging surface, not a service.
+      - "127.0.0.1:3200:3200"   # Tempo API
+      - "127.0.0.1:9090:9090"   # Prometheus UI/API
+    environment:
+      # The image's run-grafana.sh defaults GF_AUTH_ANONYMOUS_ENABLED=true with
+      # GF_AUTH_ANONYMOUS_ORG_ROLE=Admin, and this file used to override neither. Verified live
+      # against the running stack: GET /api/org/users and GET /api/datasources both answered 200
+      # with no credentials. Combined with spring.ai.chat.observations.log-prompt=true, anyone
+      # who reaches :3000 reads full prompt and completion bodies out of Loki.
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # No LLM_SPEND_ALERT_USD here on purpose. The obvious design — pass the spend budget in as an
+      # environment variable and reference it as $LLM_SPEND_ALERT_USD from the provisioned alert
+      # rule — does not work, and fails silently: Grafana expands $VARIABLE in provisioning files
+      # for datasources, dashboards and plugins but NOT for alerting. Measured on Grafana v13.1.1
+      # in this image, the rule provisioned healthily with the threshold stored as the literal
+      # string "$LLM_SPEND_ALERT_USD". The budget therefore lives as a literal in
+      # observability/grafana/provisioning/alerting/llm-cost-alerts.yaml, which flags the one line
+      # to edit.
     volumes:
       # Grafana, Loki, Prometheus and Tempo all store under /data. Without this volume every
       # telemetry point is discarded when the container is replaced, which looks exactly like
@@ -15,6 +51,26 @@ services:
       # Provisioned alongside the dashboards the image ships itself.
       - ./observability/grafana/provisioning/dashboards/app-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/app-dashboards.yaml:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/app-dashboards:ro
+      # The image's own Prometheus datasource declares jsonData.timeInterval: 60s, so Grafana
+      # computes a $__rate_interval of >=240s and smooths away every burst shorter than four
+      # minutes — while observability.properties exports at a 15s step. This app-owned datasource
+      # restates the real scrape interval so the panels can actually resolve a spike.
+      - ./observability/grafana/provisioning/datasources/app-datasources.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/app-datasources.yaml:ro
+      # The image ships no limits_config and no compactor, which leaves retention_period at 0s
+      # and retention_enabled false: nothing ever deletes a chunk and lgtm-data grows until the
+      # disk does. This config adds the retention the image omits.
+      - ./observability/loki/loki-config.yaml:/otel-lgtm/loki-config.yaml:ro
+      # The LLM spend recording rules, and the Prometheus config that references them. Prometheus
+      # has no --rules.file flag and no include mechanism, and the image's prometheus.yaml carries
+      # no rule_files entry — so adding a recording rule means replacing the whole config, exactly
+      # as loki-config.yaml above does. See the header of that file for the version-pinning caveat
+      # this creates and the one-line diff that checks it.
+      - ./observability/prometheus/prometheus.yaml:/otel-lgtm/prometheus.yaml:ro
+      - ./observability/prometheus/llm-cost-rules.yaml:/otel-lgtm/llm-cost-rules.yaml:ro
+      # Provisioned alert rules, contact point and routing. Mounted as a single FILE, not as the
+      # directory: bind-mounting the directory would mask the image's own provisioning/alerting
+      # contents instead of adding to them, and Grafana merges every file it finds there anyway.
+      - ./observability/grafana/provisioning/alerting/llm-cost-alerts.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/llm-cost-alerts.yaml:ro
     healthcheck:
       # The image creates /tmp/ready once the collector and the whole stack are accepting data.
       test: ["CMD", "test", "-f", "/tmp/ready"]
@@ -24,14 +80,57 @@ services:
       start_period: 10s
   app:
     build: .
+    # Same reboot caveat as the lgtm service above: rootless podman needs enable-linger plus
+    # podman-restart.service for this to survive a host restart.
+    restart: unless-stopped
     ports:
-      - "8080:8080"
+      # Two explicit bindings rather than 0.0.0.0, because reachability IS the access control
+      # here: /mcp shares this port with the UI and authenticates nobody, so anything that can
+      # open a socket to 8080 can read Gmail and delete calendar events. Loopback covers the
+      # host PC itself; the 100.x address is this node's Tailscale IP (cachyos-x8664), which
+      # covers the phone over the tailnet. A LAN device has a route to neither.
+      #
+      # Caveat: podman cannot bind an address that does not exist yet, so if this starts before
+      # tailscaled has brought up tailscale0 the container fails outright rather than silently
+      # falling back to a wider bind — noisy, but the safe direction. 'restart: unless-stopped'
+      # above recovers it once the interface appears. The address itself is stable: Tailscale
+      # keeps a node's IP for the life of its enrolment.
+      - "127.0.0.1:8080:8080"
+      - "100.114.140.32:8080:8080"
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       # Boot 4.1 maps the native OTEL_* env vars onto its management properties.
       OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
+      # Boot's mapping steers traces and logs only: mapMetricsEnvironmentVariables covers
+      # endpoint, temporality, histogram flavour, compression, timeout, headers, interval,
+      # exporter and SSL — but not protocol, because the Micrometer OTLP registry is HTTP-only.
+      # Traces and logs DO map it, onto ...export.otlp.transport. Harmless at http/protobuf;
+      # switching this to grpc does not move anything to :4317 — the endpoint comes from a
+      # separate mapping and stays http://lgtm:4318/v1/traces, so grpc merely aims a gRPC
+      # exporter at the HTTP port and path and those two signals stop exporting.
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_SERVICE_NAME: claude-personal-assistant
+      # Feeds management.opentelemetry.resource-attributes.service.instance.id in
+      # observability.properties. Deliberately NOT the standard OTEL_RESOURCE_ATTRIBUTES: measured
+      # against this stack, that var reached Tempo and Loki but never Prometheus, because the
+      # Micrometer OTLP registry builds its own resource. See the comment on that property.
+      OTEL_SERVICE_INSTANCE_ID: ${HOSTNAME:-cpa-1}
+      # application.properties reads these four; the Dockerfile deliberately never copies .env,
+      # so the in-jar 'optional:file:.env' resolves against WORKDIR /app, finds nothing and is
+      # skipped without a word. Verified live: the container held zero GOOGLE_* variables and
+      # /tools served exactly one tool while mcp/domain/tool/google holds seven tools.
+      # Compose reads them from .env the same way it already reads ANTHROPIC_API_KEY.
+      GOOGLE_WORKSPACE_ENABLED: ${GOOGLE_WORKSPACE_ENABLED:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REFRESH_TOKEN: ${GOOGLE_REFRESH_TOKEN:-}
+      # application.properties uses the relative 'jdbc:h2:file:./data/chat', which resolves to the
+      # very same host file from WORKDIR /app (bind mounted below) and from the repo root — so a
+      # container and a host-side ./mvnw spring-boot:run fight over the H2 file lock. With
+      # AUTO_SERVER correctly forbidden (see CLAUDE.md) the second opener dies with "Database may
+      # be already in use", which reads like an unrelated startup crash. Absolute here, so the
+      # collision is at least explicit: run one or the other, never both.
+      SPRING_DATASOURCE_URL: jdbc:h2:file:/app/data/chat;DB_CLOSE_ON_EXIT=FALSE
     volumes:
       - ./data:/app/data
     depends_on:

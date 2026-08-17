@@ -40,6 +40,17 @@ class McpEndpointController {
 
     static final String MCP_PATH = "/mcp";
 
+    /**
+     * The protocol boundary is synchronous, while {@code ToolInvokedEvent} only reaches its listener
+     * after the transaction commits — so without this line a request that was served has no trace of
+     * its own, and a missing tool metric cannot be told apart from a request that never arrived.
+     */
+    static final String HANDLED_MESSAGE = "Handled MCP request";
+
+    static final String KEY_METHOD = "method";
+    static final String KEY_TOOL = "tool";
+    static final String KEY_CODE = "code";
+
     private static final Logger log = LoggerFactory.getLogger(McpEndpointController.class);
 
     private final ToolRegistry toolRegistry;
@@ -57,11 +68,17 @@ class McpEndpointController {
             @RequestHeader HttpHeaders headers) {
         try {
             validator.validate(request, headers);
-            return ResponseEntity.ok(dispatch(request));
+            JsonRpcResponse response = dispatch(request);
+            log.atDebug()
+                    .addKeyValue(KEY_METHOD, request.method())
+                    // Null on tools/list, which carries no tool — the absence is the fact.
+                    .addKeyValue(KEY_TOOL, request.toolName())
+                    .log(HANDLED_MESSAGE);
+            return ResponseEntity.ok(response);
         } catch (McpProtocolException rejected) {
             log.atWarn()
-                    .addKeyValue("method", request.method())
-                    .addKeyValue("code", rejected.error().code())
+                    .addKeyValue(KEY_METHOD, request.method())
+                    .addKeyValue(KEY_CODE, rejected.error().code())
                     .log("Rejected MCP request: {}", rejected.getMessage());
             return ResponseEntity.status(rejected.status())
                     .body(JsonRpcResponse.failure(request.id(), rejected.error()));

@@ -22,23 +22,23 @@ final class GoogleApiCalls {
     private GoogleApiCalls() {
     }
 
-    static <T> T call(String what, Supplier<T> request) {
+    static <T> T call(String operationLabel, Supplier<T> request) {
         try {
             return request.get();
         }
         catch (RestClientResponseException failed) {
             throw new ToolExecutionException("%s failed: HTTP %d. %s"
-                    .formatted(what, failed.getStatusCode().value(), detail(failed)), failed);
+                    .formatted(operationLabel, failed.getStatusCode().value(), detail(failed)), failed);
         }
         catch (RestClientException unreachable) {
-            throw new ToolExecutionException("%s failed: %s".formatted(what, unreachable.getMessage()),
+            throw new ToolExecutionException("%s failed: %s".formatted(operationLabel, unreachable.getMessage()),
                     unreachable);
         }
     }
 
     /**
      * Google's error body is small and specific ("Request had insufficient authentication scopes"),
-     * which is exactly what the model needs — but it is still untrusted upstream text landing in
+     * which is exactly operationLabel the model needs — but it is still untrusted upstream text landing in
      * the context window, so it is capped.
      */
     private static String detail(RestClientResponseException failed) {

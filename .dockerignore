@@ -1,0 +1,23 @@
+# The build stage needs pom.xml and src/ and nothing else. Everything listed here either bloats
+# the context sent to the daemon, breaks the dependency-layer cache on every unrelated edit, or
+# would leak into the image.
+
+# Host build output. Copying it in would also shadow the container's own target/ and can carry
+# classes compiled against the host JDK 21 instead of the 25 the build needs.
+target/
+
+# Large and changes on every commit, so it would invalidate the COPY layer for no benefit.
+.git/
+
+# The live H2 database. Baking a copy into the image ships real conversation history and then
+# gets silently masked by the ./data bind mount anyway.
+data/
+
+# Real secrets. The app resolves 'optional:file:.env' against WORKDIR /app, so a copied .env
+# would be picked up by any container built from this image.
+.env
+
+# Editor and tooling state: no effect on the build, plenty of churn.
+.idea/
+.atl/
+.codegraph/

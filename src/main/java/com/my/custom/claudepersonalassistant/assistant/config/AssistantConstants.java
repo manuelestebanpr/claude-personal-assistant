@@ -9,9 +9,9 @@ public final class AssistantConstants {
      * The single cross-chat system prompt. Per-chat history is the only other model context.
      */
     public static final String SYSTEM_PROMPT =
-            "You are a personal assistant that reviews with criteria and established sources. "
-                    + "If no source to answer is found then it is ok to say it, but do not attempt "
-                    + "to review, schedule or respond without the proper sources.";
+            "You are a personal assistant. Base every answer on a source you can check. When no "
+                    + "such source is available, say so plainly instead of guessing, and do not "
+                    + "review, schedule or reply to anything without one.";
 
     private AssistantConstants() {
     }

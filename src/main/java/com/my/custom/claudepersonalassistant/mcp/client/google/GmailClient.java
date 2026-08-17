@@ -24,7 +24,7 @@ import com.my.custom.claudepersonalassistant.mcp.domain.ToolExecutionException;
  */
 public class GmailClient {
 
-    private static final String USER = "/users/me";
+    private static final String CURRENT_USER_PATH = "/users/me";
 
     private final RestClient restClient;
     private final GoogleAccessTokens tokens;
@@ -43,7 +43,7 @@ public class GmailClient {
      */
     public List<GmailMessage> search(String query, int maxResults) {
         MessageList found = GoogleApiCalls.call("Gmail search", () -> restClient.get()
-                .uri(builder -> builder.path(USER + "/messages")
+                .uri(builder -> builder.path(CURRENT_USER_PATH + "/messages")
                         .queryParam("q", query)
                         .queryParam("maxResults", maxResults)
                         .build())
@@ -84,7 +84,7 @@ public class GmailClient {
             message.put("threadId", threadId);
         }
         Draft draft = GoogleApiCalls.call("Gmail draft creation", () -> restClient.post()
-                .uri(USER + "/drafts")
+                .uri(CURRENT_USER_PATH + "/drafts")
                 .header(HttpHeaders.AUTHORIZATION, bearer())
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("message", message))
@@ -98,7 +98,7 @@ public class GmailClient {
 
     private GmailMessage get(String messageId, String format) {
         GmailMessage message = GoogleApiCalls.call("Gmail message fetch", () -> restClient.get()
-                .uri(builder -> builder.path(USER + "/messages/{id}")
+                .uri(builder -> builder.path(CURRENT_USER_PATH + "/messages/{id}")
                         .queryParam("format", format)
                         .queryParam("metadataHeaders", "From", "To", "Subject", "Date")
                         .build(messageId))
@@ -141,7 +141,7 @@ public class GmailClient {
     private record MessageList(List<Reference> messages) {
 
         @JsonIgnoreProperties(ignoreUnknown = true)
-        private record Reference(String id, String threadId) {
+        private record Reference(String id) {
         }
     }
 

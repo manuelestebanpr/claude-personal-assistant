@@ -1,0 +1,59 @@
+# Recording rules that turn Spring AI's free token counts into money.
+#
+# Referenced by observability/prometheus/prometheus.yaml (rule_files), which replaces the one the
+# otel-lgtm image ships because Prometheus has no way to add a rule file without replacing the
+# config. Mounted at /otel-lgtm/llm-cost-rules.yaml by BOTH compose.yaml and
+# TestcontainersConfiguration — anything under observability/ that is a single file needs both, or
+# it applies to one run mode only.
+#
+# Why record rather than let the panels compute it: increase() over a 24h — let alone a 30d —
+# range is evaluated across every sample in the window on every dashboard refresh. Recorded once a
+# minute it is computed once a minute no matter how many panels or viewers ask for it, and the
+# Stat panels then read a single pre-joined series.
+#
+# THE JOIN, and the two ways to get it wrong:
+#
+#   1. gen_ai_token_type="total" is its OWN series alongside "input" and "output" — Spring AI's
+#      ModelUsageMetricsGenerator emits all three from one response. A sum that does not exclude it
+#      counts every token exactly twice. Hence gen_ai_token_type!="total". Never omit the filter:
+#      select "total" deliberately or exclude it deliberately, but never neither.
+#
+#   2. The vector match is on (gen_ai_response_model, gen_ai_token_type) with no label_replace(),
+#      which only works because LlmTokenPriceMeterBinder tags the price gauge with the Micrometer
+#      names gen_ai.response.model / gen_ai.token.type — the same names
+#      DefaultChatModelObservationConvention and AiObservationMetricAttributes put on the counter.
+#      Both mangle to the same Prometheus labels. Verified live against this stack:
+#      /api/v1/series shows gen_ai_response_model="claude-haiku-4-5-20251001" and
+#      gen_ai_token_type on both metrics.
+#
+#   group_left() makes the counter side the "many": it carries gen_ai_operation_name,
+#   gen_ai_request_model and gen_ai_system too, which the sum by (...) collapses away before the
+#   match — without that collapse the two sides would have different label sets and the match
+#   would find nothing.
+#
+# A model with no price entry produces no gauge series and therefore drops out of the join rather
+# than being costed at zero. That is deliberate: UnpricedModelWarner names it in the logs, and a
+# silent $0.00 for a model that is actually costing money is the failure worth avoiding.
+groups:
+  - name: llm-cost
+    # Cheap at this volume, and well under the shortest window below, so the recorded series never
+    # goes stale between evaluations.
+    interval: 1m
+    rules:
+      - record: llm:spend_usd:24h
+        expr: |
+          sum by (gen_ai_response_model, gen_ai_token_type) (
+            increase(gen_ai_client_token_usage_total{gen_ai_token_type!="total"}[24h])
+          ) / 1e6
+          * on (gen_ai_response_model, gen_ai_token_type) group_left()
+            llm_token_price_usd_per_mtok
+
+      # Not asked for by name, but the "Spend, 30 days" Stat cannot be served by the 24h rule and
+      # a 30d increase() is exactly the expression that should never run per refresh.
+      - record: llm:spend_usd:30d
+        expr: |
+          sum by (gen_ai_response_model, gen_ai_token_type) (
+            increase(gen_ai_client_token_usage_total{gen_ai_token_type!="total"}[30d])
+          ) / 1e6
+          * on (gen_ai_response_model, gen_ai_token_type) group_left()
+            llm_token_price_usd_per_mtok

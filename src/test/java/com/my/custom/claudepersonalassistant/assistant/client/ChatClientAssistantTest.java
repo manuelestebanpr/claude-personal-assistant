@@ -7,6 +7,9 @@ import java.util.Map;
 import com.anthropic.errors.RateLimitException;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.tck.TestObservationRegistry;
+import io.micrometer.observation.tck.TestObservationRegistryAssert;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -59,9 +62,12 @@ class ChatClientAssistantTest {
     private static final String METADATA_KEY_SIGNATURE = "signature";
     private static final String METADATA_KEY_REDACTED_DATA = "data";
 
+    private static final String CHAT_CLIENT_OBSERVATION = "spring.ai.chat.client";
+
     private final ChatModel chatModel = mock(ChatModel.class);
     private final AssistantErrorPublisher errorPublisher = mock(AssistantErrorPublisher.class);
     private final ToolExecutor toolExecutor = mock(ToolExecutor.class);
+    private final TestObservationRegistry observationRegistry = TestObservationRegistry.create();
     private ChatClientAssistant assistant;
 
     @BeforeEach
@@ -71,12 +77,16 @@ class ChatClientAssistantTest {
         // is what lets the tool-calling advisor attach our callbacks at all; a plain ChatOptions here
         // would silently make every tool-calling test below pass through with no tools offered.
         given(chatModel.getOptions()).willReturn(ToolCallingChatOptions.builder().build());
-        ChatClient chatClient = ChatClient.builder(chatModel)
+        // The registry-taking builder overload, so the client's own observation is recorded here
+        // rather than dropped into ObservationRegistry.NOOP — that observation is where Spring AI
+        // reads its parent from, and where the nesting assertion below can see it.
+        ChatClient chatClient = ChatClient.builder(chatModel, observationRegistry, null, null)
                 .defaultSystem(AssistantConstants.SYSTEM_PROMPT)
                 .build();
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
         assistant = new ChatClientAssistant(chatClient, new AnthropicErrorClassifier(), errorPublisher,
-                new ContentBlockLogger(meterRegistry), meterRegistry, toolExecutor, JsonMapper.builder().build());
+                new ContentBlockLogger(meterRegistry, observationRegistry), meterRegistry, observationRegistry,
+                toolExecutor, JsonMapper.builder().build());
     }
 
     @Test
@@ -179,6 +189,32 @@ class ChatClientAssistantTest {
 
         assertThat(deltas).containsExactly("It is 21:07.");
         verify(toolExecutor).execute("get_current_hour", Map.of());
+    }
+
+    /**
+     * The turn's span tree has to reach from the caller's observation down through Spring AI, and
+     * the Reactor context is the only channel Spring AI reads a parent from: both
+     * {@code DefaultChatClient} and {@code AnthropicChatModel} call {@code parentObservation(ctx
+     * .getOrDefault("micrometer.observation", null))} unconditionally. This stream is subscribed
+     * through {@code Flux#toStream()} with automatic context propagation off, so without the
+     * explicit {@code contextWrite} that lookup returns {@code null} and the parent is cleared —
+     * which is exactly what this asserts against.
+     */
+    @Test
+    void nestsSpringAiSObservationUnderTheCallerSObservation() {
+        given(chatModel.stream(any(Prompt.class))).willReturn(Flux.just(textChunk("ok")));
+        Observation turn = Observation.createNotStarted("chat.turn.stream", observationRegistry).start();
+
+        try (Observation.Scope scope = turn.openScope()) {
+            assistant.stream(request(1L), delta -> { });
+        } finally {
+            turn.stop();
+        }
+
+        TestObservationRegistryAssert.assertThat(observationRegistry)
+                .hasObservationWithNameEqualTo(CHAT_CLIENT_OBSERVATION)
+                .that()
+                .hasParentObservationEqualTo(turn);
     }
 
     private AssistantRequest request(Long conversationId) {

@@ -1,0 +1,196 @@
+{
+  "uid": "cpa-llm-cost",
+  "title": "LLM cost",
+  "description": "Anthropic API spend, computed in Prometheus from the token counter Spring AI already emits joined to the price gauge LlmTokenPriceMeterBinder publishes. No code multiplies tokens by money. Prices live in src/main/resources/pricing.properties and are USD per MILLION tokens; while they are all 0.0 every money panel legitimately reads $0.00 — that is an unset price, not a broken query, and it is visibly different from 'No data'.",
+  "tags": ["claude-personal-assistant", "cost", "gen_ai"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "model",
+        "label": "Model",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-15s"
+        },
+        "description": "Seeded from llm_token_price_usd_per_mtok rather than from gen_ai_client_token_usage_total, and the difference matters on a cold stack. The counter is created by Spring AI on the first chat response, so before anyone has sent a message it does not exist in Prometheus at all: the variable would resolve to nothing, every expression would become gen_ai_response_model=~\"\" and all four panels would read 'No data' at exactly the moment someone opens this to check the stack came up. The price gauge is registered by a MeterBinder at application startup and exported on the first 15s step, so it is populated before any traffic. Same reasoning as the 'Service' variable on the Modules dashboard. The two label sets agree for every model that has a price — and a model with no price contributes nothing to spend anyway, which is what UnpricedModelWarner logs a WARN about.",
+        "query": "label_values(llm_token_price_usd_per_mtok, gen_ai_response_model)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Spend",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Spend today",
+      "description": "Rolling 24 hours, every token type except 'total', all selected models. Reads the recorded series llm:spend_usd:24h rather than recomputing a 24h increase() on every refresh. 'or vector(0)' renders $0.00 instead of 'No data' before the first chat turn of the window — zero spend is a true statement, an empty panel is not.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
+          "expr": "sum(llm:spend_usd:24h{gen_ai_response_model=~\"$model\"}) or vector(0)",
+          "legendFormat": "24h",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Spend, 30 days",
+      "description": "Rolling 30 days, from the recorded series llm:spend_usd:30d. Recorded rather than computed per refresh because a 30d increase() walks every sample in the window on every dashboard load. Note this is a rolling 30 days, not a calendar month, so it will not match an Anthropic invoice period exactly.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
+          "expr": "sum(llm:spend_usd:30d{gen_ai_response_model=~\"$model\"}) or vector(0)",
+          "legendFormat": "30d",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Output tokens/min",
+      "description": "Output tokens only — the expensive half, and the one that tracks how much the model is actually writing. Deliberately NOT currencyUSD: this panel counts tokens, not money. The gen_ai_token_type=\"output\" selector also keeps the 'total' series out by construction.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
+          "expr": "sum(rate(gen_ai_client_token_usage_total{gen_ai_token_type=\"output\", gen_ai_response_model=~\"$model\"}[5m])) * 60 or vector(0)",
+          "legendFormat": "tokens/min",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "type": "bargauge",
+      "title": "Spend by model, 24h",
+      "description": "The same recorded 24h spend, grouped by the resolved model. The second half of the expression ('or sum by (...) (llm_token_price_usd_per_mtok * 0)') puts every priced model on the chart at $0.00 when there is no spend yet, so a cold stack shows the models it knows about rather than an empty panel. Note the model names here are Anthropic's dated snapshots (claude-haiku-4-5-20251001), not the moving alias the application requests — that resolved name is what the price gauge has to be keyed by for this join to match.",
+      "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus-15s" },
+          "expr": "sum by (gen_ai_response_model) (llm:spend_usd:24h{gen_ai_response_model=~\"$model\"}) or sum by (gen_ai_response_model) (llm_token_price_usd_per_mtok{gen_ai_response_model=~\"$model\"} * 0)",
+          "legendFormat": "{{gen_ai_response_model}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "color": { "mode": "continuous-GrYlRd" },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "valueMode": "color",
+        "showUnfilled": true,
+        "minVizWidth": 8,
+        "minVizHeight": 16
+      }
+    }
+  ]
+}

@@ -34,7 +34,7 @@ class McpToolExecutorTest {
     private final McpToolExecutor executor = new McpToolExecutor(toolGateway);
 
     @BeforeEach
-    void catalogue() {
+    void stubToolCatalogue() {
         given(toolGateway.listTools()).willReturn(List.of(
                 new ToolDescriptor("local", "Local", "get_current_hour", "Current hour",
                         "Returns the time.", Map.of()),
@@ -53,7 +53,7 @@ class McpToolExecutorTest {
     }
 
     @Test
-    void carriesTheGatewaySBusinessFailureThroughUnchanged() {
+    void carriesTheGatewaysBusinessFailureThroughUnchanged() {
         given(toolGateway.callTool(new ToolInvocation("local", "get_current_hour", Map.of())))
                 .willReturn(ToolResult.failed("unknown timezone"));
 
@@ -75,7 +75,7 @@ class McpToolExecutorTest {
 
     /** Resolving means asking every server for its catalogue; doing that per call would be waste. */
     @Test
-    void resolvesAToolSServerOnceAndReusesIt() {
+    void resolvesAToolsServerOnceAndReusesIt() {
         given(toolGateway.callTool(new ToolInvocation("local", "get_current_hour", Map.of())))
                 .willReturn(ToolResult.ok("21:07"));
 
